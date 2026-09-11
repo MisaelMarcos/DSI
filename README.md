@@ -1,4 +1,4 @@
-# aplicativo
+# DSI
 
 Aplicativo React Native criado com Expo Router e executado em modo de
 desenvolvimento dentro do Docker.
