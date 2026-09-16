@@ -17,24 +17,31 @@ import { Input } from "@/components/input";
 
 import { Button } from "@/components/button";
 
-import { loginService } from "@/backend/auth.service";
+import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 // Tela de login — rota /login.
-// Autentica via loginService (hoje: usuário provisório admin/admin em código).
-// TODO(firebase): o service passará a autenticar com os dados do banco.
+// Layout/rotas do main preservados; autenticação via Firebase (trazida da
+// branch Firebase-version).
 export default function Login() {
   const [inputUsuarioLogin, setUsuarioLogin] = useState("");
   const [inputSenhaLogin, setSenhaLogin] = useState("");
   const [hasError, setHasError] = useState(false);
 
   async function handleSignIn() {
-    const result = await loginService({
-      username: inputUsuarioLogin,
-      password: inputSenhaLogin,
-    });
-    if (!result.ok) {
+    if (!inputUsuarioLogin.trim() || !inputSenhaLogin.trim()) {
       setHasError(true);
-      return Alert.alert("Erro", result.message);
+      return Alert.alert("Erro", "Preencha todos os campos!");
+    }
+    try {
+      await signInWithEmailAndPassword(
+        auth,
+        inputUsuarioLogin.trim(),
+        inputSenhaLogin,
+      );
+    } catch {
+      setHasError(true);
+      return Alert.alert("Erro", "Usuário ou senha inválidos.");
     }
     setHasError(false);
 

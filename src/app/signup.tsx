@@ -19,16 +19,19 @@ import { Button } from "@/components/button";
 
 import { useAuthStore } from "@/contexts/authContext";
 
+import { auth } from "@/lib/firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+
 // Página para criar nova conta — rota /signup.
-// TODO(firebase): substituir validação local por authService.register(usuario, senha)
-// que vai salvar no banco. Não integrar ainda.
+// Layout/validação do main preservados; cadastro via Firebase (trazido da
+// branch Firebase-version).
 
 export default function Signup() {
   const { usuario, senha, setUsuarioLogin, setSenhaLogin } = useAuthStore();
   const [inputConfirmarSenhaLogin, setConfirmarSenhaLogin] = useState("");
   const [hasError, setHasError] = useState(false);
 
-  function handleSignUp() {
+  async function handleSignUp() {
     if (
       !usuario.trim() ||
       !senha.trim() ||
@@ -41,10 +44,18 @@ export default function Signup() {
         "Preencha todos os campos! ou suas senhas estão diferentes",
       );
     }
+    try {
+      await createUserWithEmailAndPassword(auth, usuario.trim(), senha);
+    } catch (error: unknown) {
+      setHasError(true);
+      const message =
+        error instanceof Error ? error.message : "Não foi possível cadastrar.";
+      return Alert.alert("Erro ao cadastrar", message);
+    }
     setHasError(false);
     Alert.alert(
       `Parabéns ${usuario}!`,
-      "Login realizado com sucesso!",
+      "Usuário cadastrado com sucesso!",
       [{ text: "OK", onPress: () => router.replace("/home") }],
     );
   }
