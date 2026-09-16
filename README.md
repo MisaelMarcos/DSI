@@ -13,8 +13,10 @@ desenvolvimento dentro do Docker.
 - **TypeScript**: tipagem dos componentes, propriedades e estado.
 - **Zustand**: armazenamento global dos dados de usuário e senha.
 - **expo-linear-gradient**: fundo em gradiente da landing page.
-- **Firebase (preparado, sem SDK)**: contratos em `src/backend/` para o time
-  de backend conectar Auth + Firestore depois. Nenhum pacote instalado.
+- **Firebase (Auth integrado)**: login e cadastro por email/senha com
+  `signInWithEmailAndPassword` / `createUserWithEmailAndPassword`
+  (`src/lib/firebase.ts`). Instância do Firestore (`db`) exportada para uso
+  futuro. Pacote `firebase` instalado.
 - **Docker**: ambiente padronizado para executar o servidor do Expo.
 
 ## Estrutura do projeto
@@ -25,27 +27,30 @@ desenvolvimento dentro do Docker.
 │   ├── app/
 │   │   ├── _layout.tsx       # Configuração geral das rotas
 │   │   ├── index.tsx         # Landing, rota /
-│   │   ├── login.tsx         # Tela de login, rota /login
-│   │   ├── signup.tsx        # Tela de cadastro, rota /signup
-│   │   └── home.tsx          # Home provisória, rota /home
+│   │   ├── login.tsx         # Tela de login, rota /login (Firebase Auth)
+│   │   ├── signup.tsx        # Tela de cadastro, rota /signup (Firebase Auth)
+│   │   └── home.tsx          # Dashboard, rota /home
 │   ├── components/
 │   │   ├── button.tsx        # Botão reutilizável (variantes primary/white)
 │   │   ├── input.tsx         # Campo de texto reutilizável (prop error)
 │   │   └── logo-placeholder.tsx # Logo oficial (src/assets/logo.png)
 │   ├── contexts/
 │   │   └── authContext.tsx   # Store global do Zustand
+│   ├── lib/
+│   │   ├── firebase.ts       # init do Firebase; exporta `auth` e `db`
+│   │   └── firebase-errors.ts # Códigos auth/* → mensagens amigáveis PT-BR
+│   ├── data/
+│   │   └── bairros.ts        # Lista de bairros (uso futuro)
 │   ├── backend/
-│   │   ├── types.ts          # Contratos de auth (sem integração)
-│   │   ├── auth.repository.ts # Interface p/ o Firebase implementar
-│   │   ├── auth.service.ts   # Validação + usuário provisório admin/admin
+│   │   ├── types.ts          # Contratos de auth (uso futuro)
+│   │   ├── auth.repository.ts # Interface p/ camadas futuras de persistência
+│   │   ├── auth.service.ts   # Service legado (telas usam Firebase direto)
 │   │   ├── firebase.config.template.ts # Template de config (vazio)
 │   │   └── README.md         # Guia para o time de backend
 │   ├── theme.ts              # Tokens de cor/raio/espaçamento
 │   └── assets/               # img1, img2 e logo.png usadas nas telas
 ├── docs/
 │   └── design-referencias.md # Guia de design travado com o time
-├── database/
-│   └── conexão.ts            # Ponto inicial para integração com banco
 ├── scripts/
 │   └── start-docker.ps1     # Detecta o IP e inicia o Docker (-Fresh, -HostIp)
 ├── metro.config.js           # Metro + watcher.healthCheck p/ Docker Windows
@@ -95,31 +100,27 @@ const [hasError, setHasError] = useState(false);
 ```
 
 Os valores são locais ao React. Ao tocar em **Entrar**, `handleSignIn`
-chama `loginService` de `@/backend/auth.service`:
+autentica no Firebase (`signInWithEmailAndPassword` de `firebase/auth`,
+instância `auth` de `@/lib/firebase`):
 
-1. Com algum campo vazio, o service retorna `ok: false` e a tela exibe o
-   alerta de erro.
-2. Com usuário/senha diferentes do provisório, retorna
-   `Usuário ou senha inválidos.`
-3. Com `admin` / `admin` (provisório em código, ver `src/backend`),
-   exibe o alerta de sucesso e `router.replace("/home")`.
+1. Com algum campo vazio, a tela exibe o alerta `Preencha todos os campos!`.
+2. Com email/senha inválidos, exibe `Usuário ou senha inválidos.`
+   (mensagem genérica de propósito, sem expor o motivo).
+3. Com credenciais válidas, exibe o alerta de sucesso e
+   `router.replace("/home")`.
 
 Em qualquer falha, `hasError` vira `true` e os campos recebem
 `error={hasError}`, mostrando a borda vermelha. Ao digitar, o erro limpa.
 
 O link `Cadastre-se` navega para `/signup`.
 
-### Acesso provisório
+### Autenticação (Firebase)
 
-Enquanto o Firebase não é conectado, o login aceita:
-
-```text
-usuário: admin
-senha:   admin
-```
-
-Definido em `PROVISIONAL_USERS` dentro de `src/backend/auth.service.ts`,
-marcado com `TODO(firebase)` para remoção.
+Login e cadastro usam o Firebase Authentication (email/senha), projeto
+`dsi-ufrpe-58db3`. A config hoje está hardcoded em `src/lib/firebase.ts`
+(migração para `.env` com `EXPO_PUBLIC_*` prevista; template em
+`.env.example`). É preciso que o provedor **Email/senha** esteja ativo no
+Firebase Console (Authentication → Método de login).
 
 ### `src/app/signup.tsx`: tela de cadastro
 
@@ -141,12 +142,13 @@ pois ele serve apenas para validar o cadastro atual:
 const [inputConfirmarSenhaLogin, setConfirmarSenhaLogin] = useState("");
 ```
 
-#### Campo de usuário
+#### Campo de email
 
 ```tsx
 <Input
-  placeholder="Usuário"
+  placeholder="Email"
   autoCapitalize="none"
+  keyboardType="email-address"
   error={hasError}
   onChangeText={(text: string) => {
     setUsuarioLogin(text);
@@ -156,6 +158,8 @@ const [inputConfirmarSenhaLogin, setConfirmarSenhaLogin] = useState("");
 ```
 
 Cada texto digitado chama o setter da store e atualiza `usuario` globalmente.
+`keyboardType="email-address"` exibe o teclado com `@`; `autoCapitalize="none"`
+evita maiúscula inicial que invalidaria o email.
 
 #### Campo de senha
 
@@ -188,17 +192,25 @@ botão de cadastro é pressionado.
 <Button label="Cadastrar" onPress={handleSignUp} />
 ```
 
-A função `handleSignUp` verifica:
+A função `handleSignUp` (assíncrona) verifica:
 
-1. Se o usuário não está vazio.
+1. Se o email não está vazio.
 2. Se a senha não está vazia.
 3. Se a confirmação de senha não está vazia.
 4. Se `senha` e `inputConfirmarSenhaLogin` são iguais.
 
-Se qualquer validação falhar, `hasError` vira `true` (bordas vermelhas nos
-campos via `error={hasError}`) e um alerta de erro é exibido. Quando tudo
-está correto, o aplicativo mostra o alerta de sucesso e, após o toque em
-`OK`, executa `router.replace("/home")`.
+Se qualquer validação local falhar, `hasError` vira `true` (bordas vermelhas
+nos campos via `error={hasError}`) e um alerta de erro é exibido. Passando,
+chama `createUserWithEmailAndPassword(auth, ...)`; erros do Firebase são
+traduzidos por `getFriendlyAuthErrorMessage` (`src/lib/firebase-errors.ts`):
+
+- `auth/weak-password` → `Senha fraca: use pelo menos 6 caracteres.`
+- `auth/email-already-in-use` → `Este email já está cadastrado. Tente entrar.`
+- `auth/invalid-email` → `Digite um email válido.`
+- `auth/network-request-failed` → `Sem conexão. Verifique a internet e tente de novo.`
+
+Com sucesso, o aplicativo mostra o alerta `Usuário cadastrado com sucesso!`
+e, após o toque em `OK`, executa `router.replace("/home")`.
 
 #### Link `Entre aqui`
 
@@ -210,16 +222,18 @@ está correto, o aplicativo mostra o alerta de sucesso e, após o toque em
 
 Esse link retorna para a tela de login.
 
-### `src/app/home.tsx`: home provisória
+### `src/app/home.tsx`: dashboard
 
-Essa é a rota `/home`, acessada após login ou cadastro válido. É um template
-no estilo Climatempo: cabeçalho `Recife • agora`, card de temperatura,
-cards `Hoje / Amanhã / Alertas` (valores `--` mockados) e botão `Sair`,
-que volta para `/` com `router.replace("/")`.
+Essa é a rota `/home`, acessada após login ou cadastro válido. Dashboard no
+estilo Climatempo (ícones `Ionicons` de `@expo/vector-icons`): cabeçalho com
+saudação + localização (`Recife, PE`), card principal com condição atual
+(temperatura, status, aviso), card de alerta de chuva forte, previsão das
+próximas horas (scroll horizontal), grade de condições (umidade, vento,
+temperatura, pressão) e `Sair da conta`, que volta para `/` com
+`router.replace("/")`.
 
-```tsx
-// TODO(home): trocar cards mock por dados de previsão + alertas do Firebase/API.
-```
+Os valores exibidos ainda são mockados no código — falta plugar previsão e
+alertas reais (Firebase/API).
 
 ### `src/components/input.tsx`: componente `Input`
 
@@ -314,37 +328,30 @@ const { usuario, senha } = useAuthStore.getState();
 Essa store mantém os valores enquanto a aplicação está aberta, mas não salva
 os dados permanentemente no dispositivo.
 
-### `database/conexão.ts`
+### `src/lib/`: Firebase + erros amigáveis
 
-Esse arquivo é o ponto inicial planejado para uma integração com banco de
-dados. Ele lê os valores atuais da store e os exporta:
+- `firebase.ts`: inicializa o app (`initializeApp`) e exporta `auth`
+  (`getAuth`) e `db` (`getFirestore`). Config hardcoded por decisão atual;
+  migração para `.env` (`EXPO_PUBLIC_*`, template em `.env.example`) prevista.
+- `firebase-errors.ts`: `getFriendlyAuthErrorMessage(error)` traduz códigos
+  `auth/*` para PT-BR, para os Alerts nunca exibirem o texto cru do SDK.
 
-```tsx
-const { usuario, senha } = useAuthStore.getState();
+O arquivo antigo `database/conexão.ts` (com acento no nome) foi removido;
+os imports usam o alias `@/lib/...`.
 
-export { usuario, senha };
-```
+### `src/backend/`: contratos (uso futuro)
 
-Ele ainda não abre conexão, cria tabela, salva usuário nem consulta senha. Além
-disso, como a leitura é feita no carregamento do módulo, as constantes não são
-atualizadas automaticamente quando a store muda. O contrato novo para o
-Firebase está em `src/backend/` (abaixo).
-
-### `src/backend/`: auth pronta para o Firebase (sem integração)
-
-Pasta deixada pronta para os outros desenvolvedores. Nenhum SDK instalado.
+Pasta com os contratos originais de auth. As telas hoje chamam o Firebase
+direto via `src/lib/`; estes arquivos ficam para evoluções (ex.: camada de
+persistência no Firestore):
 
 - `types.ts`: `UserCredentials`, `RegisterInput`, `AuthResult`, `UserRecord`.
 - `auth.repository.ts`: interface `AuthRepository` (`login`, `register`,
-  `logout`) para o backend implementar com Firebase Auth + Firestore.
-- `auth.service.ts`: usado pela tela de login. Hoje valida localmente e
-  aceita o provisório `admin`/`admin` (`PROVISIONAL_USERS`, com
-  `TODO(firebase)` para remoção). Pontos `TODO(firebase)` marcam a troca.
-- `firebase.config.template.ts`: objeto de config vazio (sem ler `.env`
-  ainda, para o `tsc` passar sem `@types/node`).
+  `logout`).
+- `auth.service.ts`: service legado de validação local (não usado pelas telas).
+- `firebase.config.template.ts`: objeto de config vazio (referência).
 - `README.md`: schema sugerido da coleção `users`
-  (`username` único, `passwordHash` nunca em texto puro, `createdAt`) e passo
-  a passo para o time de backend.
+  (`username` único, `passwordHash` nunca em texto puro, `createdAt`).
 
 ### `src/theme.ts`, logo e `metro.config.js`
 
@@ -384,21 +391,22 @@ espaçamentos e alinhamentos separados da estrutura JSX.
 
 1. O aplicativo inicia na landing `/`, com logo, nome e botão **Começar**.
 2. Ao tocar em **Começar**, o usuário vai para `/login`.
-3. No login, preenche usuário e senha e toca em **Entrar**.
-4. Com `admin` / `admin`, aparece o alerta de sucesso; em **OK**, vai para
-   `/home`. Com erro, os campos ficam com borda vermelha.
+3. No login, preenche email e senha e toca em **Entrar**.
+4. Com credenciais válidas no Firebase, aparece o alerta de sucesso; em
+   **OK**, vai para `/home`. Com erro, os campos ficam com borda vermelha.
 5. Se não tem conta, toca em **Cadastre-se** e vai para `/signup`.
-6. No cadastro, usuário e senha vão para o Zustand; a confirmação é local.
-7. Com dados válidos, alerta de sucesso e **OK** leva para `/home`.
+6. No cadastro, email e senha vão para o Zustand; a confirmação é local.
+7. Com dados válidos, a conta é criada no Firebase, alerta de sucesso e
+   **OK** leva para `/home`. Senha curta mostra
+   `Senha fraca: use pelo menos 6 caracteres.`
 
 ## Limitações atuais
 
-- O login aceita só o provisório `admin` / `admin` em código (sem banco).
-- O cadastro não salva dados em um banco.
+- A config do Firebase está hardcoded em `src/lib/firebase.ts` (mover para
+  `.env` com `EXPO_PUBLIC_*`).
+- O Firestore (`db`) está instanciado, mas nenhuma coleção é usada ainda.
+- A home exibe valores mockados (falta plugar previsão e alertas reais).
 - A senha fica apenas em memória enquanto o aplicativo está aberto.
-- A home é um template com valores mockados (`--`).
-- `database/conexão.ts` ainda não possui uma conexão real com banco de dados.
-- Firebase não instalado: só contratos em `src/backend/` + `TODO(firebase)`.
 
 ## Arquivos de configuração
 
@@ -416,8 +424,9 @@ disponíveis:
   sobe tudo (fluxo oficial quando o celular mostra bundle antigo).
 
 As dependências principais são `expo`, `expo-router`, `react-native`,
-`expo-linear-gradient` e `zustand`. O `package-lock.json` registra as versões
-exatas instaladas pelo `npm ci` durante o build da imagem Docker.
+`firebase`, `@expo/vector-icons`, `expo-linear-gradient` e `zustand`.
+O `package-lock.json` registra as versões exatas instaladas pelo `npm ci`
+durante o build da imagem Docker.
 
 ### `app.json`
 

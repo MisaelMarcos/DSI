@@ -1,14 +1,15 @@
-# Backend — pronto para Firebase (sem integração)
+# Backend — contratos (auth Firebase já integrada nas telas)
 
-Pasta deixada pronta para os outros desenvolvedores. Nada aqui é chamado
-pelas telas e nenhum SDK foi instalado.
+As telas hoje chamam o Firebase direto via `src/lib/firebase.ts`
+(`signInWithEmailAndPassword` / `createUserWithEmailAndPassword`). Esta pasta
+guarda os contratos originais para evoluções (ex.: persistência no Firestore).
 
 ## Arquivos
 
 - `types.ts` — `UserCredentials`, `RegisterInput`, `AuthResult`, `UserRecord`
-- `auth.repository.ts` — interface `AuthRepository` a implementar com Firebase
-- `auth.service.ts` — validação local atual; pontos `TODO(firebase)` marcam a troca
-- `firebase.config.template.ts` — lê `EXPO_PUBLIC_FIREBASE_*` do `.env`, sem inicializar nada
+- `auth.repository.ts` — interface `AuthRepository` para camadas futuras
+- `auth.service.ts` — service legado de validação local (não usado pelas telas)
+- `firebase.config.template.ts` — objeto de config vazio (referência)
 
 ## Schema sugerido (Firestore, coleção `users`)
 
@@ -21,12 +22,11 @@ users/{id}
 
 ## Passo a passo para o time de backend
 
-1. `npm i firebase` (ou `@react-native-firebase/*`, decidir um só)
-2. Criar projeto Firebase, ativar Auth + Firestore
-3. Copiar `.env.example` para `.env` e preencher `EXPO_PUBLIC_FIREBASE_*`
-4. Implementar `AuthRepository` com Auth + Firestore
-5. Trocar nas telas a validação local por `loginService` / `registerService`
-6. Regras Firestore: só ler/escrever o próprio `users/{uid}`
+1. Projeto Firebase `dsi-ufrpe-58db3` com Auth (Email/senha) + Firestore ativos
+2. Migrar a config hardcoded de `src/lib/firebase.ts` para `.env`
+   (`EXPO_PUBLIC_FIREBASE_*`, template em `.env.example`)
+3. Implementar persistência no Firestore a partir de `AuthRepository`
+4. Regras Firestore: só ler/escrever o próprio `users/{uid}`
 
 ## O que NÃO fazer ainda
 
