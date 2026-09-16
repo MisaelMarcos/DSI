@@ -8,3 +8,4 @@ dist
 web-build
 android
 ios
+.metro-health-check*

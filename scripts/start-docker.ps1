@@ -1,5 +1,6 @@
 param(
-  [string]$HostIp
+  [string]$HostIp,
+  [switch]$Fresh
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,6 +31,11 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $projectRoot
 
 try {
+  if ($Fresh) {
+    Write-Host "Limpando caches do Metro e recriando containers para forçar bundle novo..."
+    docker compose run --rm --build expo sh -c "rm -rf /app/node_modules/.cache/metro-cache /tmp/metro-* /tmp/haste-map-*"
+    docker compose down --remove-orphans
+  }
   docker compose up --build
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

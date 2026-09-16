@@ -1,120 +1,100 @@
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  Alert,
-} from "react-native";
-import { useState } from "react";
-import { Link, router } from "expo-router";
-import { Input } from "@/components/input";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
+
 import { Button } from "@/components/button";
-import { auth } from "../../database/conexão"; // Ajustado para caminhar da pasta src/app para a raiz database/
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { LogoPlaceholder } from "@/components/logo-placeholder";
 
-export default function Index() {
-  // 1. Declarando as variáveis de estado para armazenar as credenciais digitadas
-  const [inputUsuarioLogin, setUsuarioLogin] = useState("");
-  const [inputSenhaLogin, setSenhaLogin] = useState("");
-
-  // 2. Função assíncrona correta para realizar o login no Firebase
-  async function handleSignIn() {
-    if (!inputUsuarioLogin.trim() || !inputSenhaLogin.trim()) {
-      Alert.alert("Erro", "Por favor, preencha todos os campos.");
-      return;
-    }
-
-    try {
-      // Autenticando com o Firebase Auth
-      await signInWithEmailAndPassword(auth, inputUsuarioLogin, inputSenhaLogin);
-
-      Alert.alert("Sucesso", "Login realizado com sucesso!", [
-        { text: "OK", onPress: () => router.replace("/home") }
-      ]);
-    } catch (error: any) {
-      console.error(error);
-      Alert.alert("Erro", "E-mail ou senha incorretos.");
-    }
-  }
-
+// Landing — rota /.
+// Fundo em gradiente azul-claro + logo destacada em card branco.
+export default function Landing() {
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.select({ ios: "padding", android: "height" })}
-    >
+    <LinearGradient colors={["#2F6BFF", "#4697ee"]} style={{ flex: 1 }}>
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.conteiner}>
-          <Image
-            source={require("@/assets/img1.png")}
-            style={styles.illustration}
-          />
-          <Text style={styles.title}>Entrar</Text>
-          <Text style={styles.subtitle}>
-            Acesse sua conta ou crie uma nova!
-          </Text>
-          <View style={styles.form}>
-            <Input
-              placeholder="Usuário"
-              onChangeText={(text) => setUsuarioLogin(text)}
-            />
-            <Input
-              placeholder="Senha"
-              secureTextEntry
-              onChangeText={(text) => setSenhaLogin(text)}
-            />
-            <Button label="Entrar" onPress={handleSignIn} />
+        <View style={styles.container}>
+          <View style={styles.logoCard}>
+            <LogoPlaceholder size={200} />
           </View>
-          <Text style={styles.footerText}>
-            Não tem uma conta?{" "}
-            <Link href="/signup" style={styles.footerLink}>
-              Cadastre-se
-            </Link>
+          <Text style={styles.title}>
+            Alerta<Text style={styles.titleBlue}>Chuva</Text>
+          </Text>
+          <Text style={styles.tagline}>
+            Informação para você se proteger da chuva
+          </Text>
+          <Text style={styles.city}>Recife</Text>
+          <View style={styles.cta}>
+            <Button
+              label="Começar"
+              variant="white"
+              onPress={() => router.push("/login")}
+            />
+          </View>
+          <Text style={styles.hint}>
+            Previsão horária • Alertas • Recife
           </Text>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  conteiner: {
+  container: {
     flexGrow: 1,
-    backgroundColor: "#FDFDFD",
     padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  illustration: {
-    width: "100%",
-    height: 330,
-    resizeMode: "contain",
-    marginTop: 40,
+  logoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 44,
+    padding: 14,
+    // Sombra no iOS.
+    shadowColor: "#0B2A5B",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    // Sombra no Android.
+    elevation: 6,
   },
   title: {
     fontSize: 32,
-    fontWeight: "900", // Alterado de 900 para "900" (string)
+    fontWeight: "900",
+    textAlign: "center",
+    marginTop: 8,
+    color: "#FFFFFF",
   },
-  subtitle: {
+  titleBlue: {
+    color: "#3366FF",
+  },
+  tagline: {
     fontSize: 16,
-  },
-  form: {
-    marginTop: 24,
-    gap: 12,
-  },
-  footerText: {
     textAlign: "center",
-    marginTop: 24,
-    color: "#585860",
+    color: "#FFFFFF",
+    marginTop: 8,
+    paddingHorizontal: 16,
   },
-  footerLink: {
+  city: {
+    fontSize: 18,
+    fontWeight: "600",
     textAlign: "center",
+    color: "#FFFFFF",
+    marginTop: 4,
+    opacity: 0.9,
+  },
+  cta: {
+    width: "100%",
     marginTop: 24,
-    color: "#203bb3",
-    fontWeight: "900", // Alterado de 900 para "900" (string)
+  },
+  hint: {
+    marginTop: 16,
+    fontSize: 13,
+    color: "#FFFFFF",
+    textAlign: "center",
+    opacity: 0.85,
   },
 });

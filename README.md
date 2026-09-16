@@ -12,6 +12,11 @@ desenvolvimento dentro do Docker.
   `src/app`.
 - **TypeScript**: tipagem dos componentes, propriedades e estado.
 - **Zustand**: armazenamento global dos dados de usuário e senha.
+- **expo-linear-gradient**: fundo em gradiente da landing page.
+- **Firebase (Auth integrado)**: login e cadastro por email/senha com
+  `signInWithEmailAndPassword` / `createUserWithEmailAndPassword`
+  (`src/lib/firebase.ts`). Instância do Firestore (`db`) exportada para uso
+  futuro. Pacote `firebase` instalado.
 - **Docker**: ambiente padronizado para executar o servidor do Expo.
 
 ## Estrutura do projeto
@@ -21,19 +26,34 @@ desenvolvimento dentro do Docker.
 ├── src/
 │   ├── app/
 │   │   ├── _layout.tsx       # Configuração geral das rotas
-│   │   ├── index.tsx         # Tela de login, rota /
-│   │   ├── signup.tsx        # Tela de cadastro, rota /signup
-│   │   └── home.tsx          # Tela inicial após login/cadastro, rota /home
+│   │   ├── index.tsx         # Landing, rota /
+│   │   ├── login.tsx         # Tela de login, rota /login (Firebase Auth)
+│   │   ├── signup.tsx        # Tela de cadastro, rota /signup (Firebase Auth)
+│   │   └── home.tsx          # Dashboard, rota /home
 │   ├── components/
-│   │   ├── button.tsx        # Botão reutilizável
-│   │   └── input.tsx         # Campo de texto reutilizável
+│   │   ├── button.tsx        # Botão reutilizável (variantes primary/white)
+│   │   ├── input.tsx         # Campo de texto reutilizável (prop error)
+│   │   └── logo-placeholder.tsx # Logo oficial (src/assets/logo.png)
 │   ├── contexts/
 │   │   └── authContext.tsx   # Store global do Zustand
-│   └── assets/               # Imagens usadas nas telas
-├── database/
-│   └── conexão.ts            # Ponto inicial para integração com banco
+│   ├── lib/
+│   │   ├── firebase.ts       # init do Firebase; exporta `auth` e `db`
+│   │   └── firebase-errors.ts # Códigos auth/* → mensagens amigáveis PT-BR
+│   ├── data/
+│   │   └── bairros.ts        # Lista de bairros (uso futuro)
+│   ├── backend/
+│   │   ├── types.ts          # Contratos de auth (uso futuro)
+│   │   ├── auth.repository.ts # Interface p/ camadas futuras de persistência
+│   │   ├── auth.service.ts   # Service legado (telas usam Firebase direto)
+│   │   ├── firebase.config.template.ts # Template de config (vazio)
+│   │   └── README.md         # Guia para o time de backend
+│   ├── theme.ts              # Tokens de cor/raio/espaçamento
+│   └── assets/               # img1, img2 e logo.png usadas nas telas
+├── docs/
+│   └── design-referencias.md # Guia de design travado com o time
 ├── scripts/
-│   └── start-docker.ps1     # Detecta o IP e inicia o Docker
+│   └── start-docker.ps1     # Detecta o IP e inicia o Docker (-Fresh, -HostIp)
+├── metro.config.js           # Metro + watcher.healthCheck p/ Docker Windows
 ├── Dockerfile                # Imagem de desenvolvimento
 ├── docker-compose.yml        # Serviço do Expo
 ├── app.json                  # Configuração do Expo
@@ -55,73 +75,52 @@ telas encontradas em `src/app` em uma pilha de navegação.
 `headerShown: false` remove o cabeçalho padrão do Expo Router. As telas ficam
 responsáveis pelo próprio conteúdo visual.
 
-### `src/app/index.tsx`: tela de login
+### `src/app/index.tsx`: landing page
 
 Esse arquivo representa a rota `/`, que é a primeira tela do aplicativo.
 
-#### Estado do login
+O fundo é um gradiente azul-claro (`LinearGradient` de `#2F6BFF` para
+`#CFE4FA`, pacote `expo-linear-gradient`). Sobre ele ficam:
+
+- `LogoPlaceholder`: exibe a logo oficial (`src/assets/logo.png`) dentro de
+  um card branco com sombra, para a logo azul não misturar com o fundo.
+- Título `AlertaChuva` junto: `Alerta` em branco e `Chuva` em azul.
+- Tagline `Informação para você se proteger da chuva` e cidade `Recife`.
+- Botão branco `Começar` (`<Button label="Começar" variant="white" />`),
+  que navega com `router.push("/login")`.
+
+### `src/app/login.tsx`: tela de login
+
+Esse arquivo representa a rota `/login`.
 
 ```tsx
 const [inputUsuarioLogin, setUsuarioLogin] = useState("");
 const [inputSenhaLogin, setSenhaLogin] = useState("");
+const [hasError, setHasError] = useState(false);
 ```
 
-Os dois valores começam vazios e são mantidos localmente pelo React. Os
-setters atualizam os valores conforme o usuário digita.
+Os valores são locais ao React. Ao tocar em **Entrar**, `handleSignIn`
+autentica no Firebase (`signInWithEmailAndPassword` de `firebase/auth`,
+instância `auth` de `@/lib/firebase`):
 
-#### Campo de usuário
+1. Com algum campo vazio, a tela exibe o alerta `Preencha todos os campos!`.
+2. Com email/senha inválidos, exibe `Usuário ou senha inválidos.`
+   (mensagem genérica de propósito, sem expor o motivo).
+3. Com credenciais válidas, exibe o alerta de sucesso e
+   `router.replace("/home")`.
 
-```tsx
-<Input
-  placeholder="Usuário"
-  onChangeText={(text) => setUsuarioLogin(text)}
-/>
-```
+Em qualquer falha, `hasError` vira `true` e os campos recebem
+`error={hasError}`, mostrando a borda vermelha. Ao digitar, o erro limpa.
 
-O componente `Input` exibe o campo. Cada alteração de texto chama
-`setUsuarioLogin`, atualizando `inputUsuarioLogin`.
+O link `Cadastre-se` navega para `/signup`.
 
-#### Campo de senha
+### Autenticação (Firebase)
 
-```tsx
-<Input
-  placeholder="Senha"
-  secureTextEntry
-  onChangeText={(text) => setSenhaLogin(text)}
-/>
-```
-
-`secureTextEntry` oculta os caracteres digitados. O texto é armazenado em
-`inputSenhaLogin`.
-
-#### Botão `Entrar`
-
-```tsx
-<Button label="Entrar" onPress={handleSignIn} />
-```
-
-Ao tocar no botão, a função `handleSignIn` é executada:
-
-1. Usa `trim()` para verificar se o usuário foi preenchido sem considerar
-   apenas espaços.
-2. Faz a mesma validação para a senha.
-3. Se algum campo estiver vazio, exibe um alerta de erro e interrompe a função.
-4. Se os campos estiverem preenchidos, exibe o alerta de sucesso.
-5. Ao tocar em `OK` no alerta, executa `router.replace("/home")`.
-
-O `replace` substitui a tela de login pela home, evitando que o usuário volte
-para o login usando o botão voltar.
-
-#### Link `Cadastre-se`
-
-```tsx
-<Link href="/signup" style={styles.footerLink}>
-  Cadastre-se
-</Link>
-```
-
-Esse link navega para a rota `/signup`, onde o usuário pode preencher os
-dados de cadastro.
+Login e cadastro usam o Firebase Authentication (email/senha), projeto
+`dsi-ufrpe-58db3`. A config hoje está hardcoded em `src/lib/firebase.ts`
+(migração para `.env` com `EXPO_PUBLIC_*` prevista; template em
+`.env.example`). É preciso que o provedor **Email/senha** esteja ativo no
+Firebase Console (Authentication → Método de login).
 
 ### `src/app/signup.tsx`: tela de cadastro
 
@@ -143,13 +142,24 @@ pois ele serve apenas para validar o cadastro atual:
 const [inputConfirmarSenhaLogin, setConfirmarSenhaLogin] = useState("");
 ```
 
-#### Campo de usuário
+#### Campo de email
 
 ```tsx
-<Input placeholder="Usuário" onChangeText={setUsuarioLogin} />
+<Input
+  placeholder="Email"
+  autoCapitalize="none"
+  keyboardType="email-address"
+  error={hasError}
+  onChangeText={(text: string) => {
+    setUsuarioLogin(text);
+    setHasError(false);
+  }}
+/>
 ```
 
 Cada texto digitado chama o setter da store e atualiza `usuario` globalmente.
+`keyboardType="email-address"` exibe o teclado com `@`; `autoCapitalize="none"`
+evita maiúscula inicial que invalidaria o email.
 
 #### Campo de senha
 
@@ -179,38 +189,51 @@ botão de cadastro é pressionado.
 #### Botão `Cadastrar`
 
 ```tsx
-<Button label="Cadastrar" onPress={handleSignIn} />
+<Button label="Cadastrar" onPress={handleSignUp} />
 ```
 
-Apesar do nome `handleSignIn` ter sido mantido no código, nessa tela ele trata
-o cadastro. A função verifica:
+A função `handleSignUp` (assíncrona) verifica:
 
-1. Se o usuário não está vazio.
+1. Se o email não está vazio.
 2. Se a senha não está vazia.
 3. Se a confirmação de senha não está vazia.
 4. Se `senha` e `inputConfirmarSenhaLogin` são iguais.
 
-Se qualquer validação falhar, um alerta de erro é exibido. Quando tudo está
-correto, o aplicativo mostra o alerta de sucesso e, após o toque em `OK`,
-executa `router.replace("/home")`.
+Se qualquer validação local falhar, `hasError` vira `true` (bordas vermelhas
+nos campos via `error={hasError}`) e um alerta de erro é exibido. Passando,
+chama `createUserWithEmailAndPassword(auth, ...)`; erros do Firebase são
+traduzidos por `getFriendlyAuthErrorMessage` (`src/lib/firebase-errors.ts`):
+
+- `auth/weak-password` → `Senha fraca: use pelo menos 6 caracteres.`
+- `auth/email-already-in-use` → `Este email já está cadastrado. Tente entrar.`
+- `auth/invalid-email` → `Digite um email válido.`
+- `auth/network-request-failed` → `Sem conexão. Verifique a internet e tente de novo.`
+
+Com sucesso, o aplicativo mostra o alerta `Usuário cadastrado com sucesso!`
+e, após o toque em `OK`, executa `router.replace("/home")`.
 
 #### Link `Entre aqui`
 
 ```tsx
-<Link href="/" style={styles.footerLink}>
+<Link href="/login" style={styles.footerLink}>
   Entre aqui
 </Link>
 ```
 
 Esse link retorna para a tela de login.
 
-### `src/app/home.tsx`: tela inicial
+### `src/app/home.tsx`: dashboard
 
-Essa é a rota `/home`, acessada após o usuário confirmar um login ou cadastro
-válido. Atualmente ela exibe apenas o texto `Essa é a página home` centralizado
-na tela.
+Essa é a rota `/home`, acessada após login ou cadastro válido. Dashboard no
+estilo Climatempo (ícones `Ionicons` de `@expo/vector-icons`): cabeçalho com
+saudação + localização (`Recife, PE`), card principal com condição atual
+(temperatura, status, aviso), card de alerta de chuva forte, previsão das
+próximas horas (scroll horizontal), grade de condições (umidade, vento,
+temperatura, pressão) e `Sair da conta`, que volta para `/` com
+`router.replace("/")`.
 
-Ainda não existem botões ou interações nessa tela.
+Os valores exibidos ainda são mockados no código — falta plugar previsão e
+alertas reais (Firebase/API).
 
 ### `src/components/input.tsx`: componente `Input`
 
@@ -218,14 +241,20 @@ Esse componente encapsula o `TextInput` do React Native para que os campos
 tenham o mesmo estilo em todas as telas.
 
 ```tsx
-export function Input({ ...rest }: TextInputProps) {
-  return <TextInput style={styles.input} {...rest} />;
+type InputProps = TextInputProps & {
+  // Quando true, a borda fica vermelha (ex.: erro de validação).
+  error?: boolean;
+};
+
+export function Input({ error, style, ...rest }: InputProps) {
+  return <TextInput style={[styles.input, error && styles.error, style]} {...rest} />;
 }
 ```
 
 `TextInputProps` permite receber propriedades nativas como `placeholder`,
 `secureTextEntry` e `onChangeText`. O operador `{...rest}` repassa essas
-propriedades ao `TextInput`.
+propriedades ao `TextInput`. A prop `error` alterna para o estilo de borda
+vermelha (`#EF4444`).
 
 O estilo aplicado define largura total, altura de `48`, borda, raio dos cantos,
 tamanho da fonte e espaçamento interno.
@@ -237,11 +266,14 @@ Esse componente encapsula o `TouchableOpacity` para padronizar os botões.
 ```tsx
 type ButtonProps = TouchableOpacityProps & {
   label: string;
+  // "primary" (padrão): fundo azul, texto branco. "white": fundo branco, texto azul.
+  variant?: "primary" | "white";
 };
 ```
 
-O botão aceita todas as propriedades de `TouchableOpacity` e exige uma
-propriedade `label`, que define o texto exibido.
+O botão aceita todas as propriedades de `TouchableOpacity`, exige `label`
+(texto exibido) e aceita `variant` opcional. Sem `variant`, o estilo é o
+azul original — por isso login, cadastro e home não mudaram.
 
 ```tsx
 <TouchableOpacity style={styles.container} activeOpacity={0.7} {...rest}>
@@ -255,8 +287,10 @@ quando o botão é pressionado.
 
 Atualmente os botões usados são:
 
+- **Começar** (landing, variante branca): navega para `/login`.
 - **Entrar**: chama `handleSignIn` da tela de login.
-- **Cadastrar**: chama `handleSignIn` da tela de cadastro.
+- **Cadastrar**: chama `handleSignUp` da tela de cadastro.
+- **Sair** (home): volta para `/`.
 - **OK** nos alertas de sucesso: navega para `/home`.
 
 ### `src/contexts/authContext.tsx`: store Zustand
@@ -294,25 +328,51 @@ const { usuario, senha } = useAuthStore.getState();
 Essa store mantém os valores enquanto a aplicação está aberta, mas não salva
 os dados permanentemente no dispositivo.
 
-### `database/conexão.ts`
+### `src/lib/`: Firebase + erros amigáveis
 
-Esse arquivo é o ponto inicial planejado para uma integração com banco de
-dados. Atualmente ele apenas lê os valores atuais da store:
+- `firebase.ts`: inicializa o app (`initializeApp`) e exporta `auth`
+  (`getAuth`) e `db` (`getFirestore`). Config hardcoded por decisão atual;
+  migração para `.env` (`EXPO_PUBLIC_*`, template em `.env.example`) prevista.
+- `firebase-errors.ts`: `getFriendlyAuthErrorMessage(error)` traduz códigos
+  `auth/*` para PT-BR, para os Alerts nunca exibirem o texto cru do SDK.
 
-```tsx
-const { usuario, senha } = useAuthStore.getState();
-```
+O arquivo antigo `database/conexão.ts` (com acento no nome) foi removido;
+os imports usam o alias `@/lib/...`.
 
-Ele ainda não abre conexão, cria tabela, salva usuário nem consulta senha. Além
-disso, como a leitura é feita no carregamento do módulo, as constantes não são
-atualizadas automaticamente quando a store muda.
+### `src/backend/`: contratos (uso futuro)
+
+Pasta com os contratos originais de auth. As telas hoje chamam o Firebase
+direto via `src/lib/`; estes arquivos ficam para evoluções (ex.: camada de
+persistência no Firestore):
+
+- `types.ts`: `UserCredentials`, `RegisterInput`, `AuthResult`, `UserRecord`.
+- `auth.repository.ts`: interface `AuthRepository` (`login`, `register`,
+  `logout`).
+- `auth.service.ts`: service legado de validação local (não usado pelas telas).
+- `firebase.config.template.ts`: objeto de config vazio (referência).
+- `README.md`: schema sugerido da coleção `users`
+  (`username` único, `passwordHash` nunca em texto puro, `createdAt`).
+
+### `src/theme.ts`, logo e `metro.config.js`
+
+- `src/theme.ts`: tokens travados (`background`, `primary #3366FF`, raios,
+  espaçamentos). Ver `docs/design-referencias.md`.
+- `src/components/logo-placeholder.tsx`: exibe `src/assets/logo.png`
+  (copiada de `assets/images/`), aceitando `size?`.
+- `metro.config.js`: estende a config do Expo e ativa
+  `watcher.healthCheck` como rede de segurança do watcher no Docker Windows.
+- `docs/design-referencias.md`: guia de design travado com o time
+  (referências Climatempo/Tempo iOS, tokens, mapa de telas e de assets).
 
 ### Imagens em `src/assets`
 
+- `logo.png`: logo oficial, usada na landing via `LogoPlaceholder`.
 - `img1.png`: ilustração usada na tela de login.
 - `img2.png`: ilustração usada na tela de cadastro.
 
 As imagens são carregadas com `require` e exibidas pelo componente `Image`.
+`img1/img2` têm fundo branco chapado, por isso login/cadastro usam fundo
+`#FFFFFF`; a home (sem imagens) usa `#F2F6FF` para contraste dos cards.
 
 ### Layout e teclado
 
@@ -329,26 +389,24 @@ espaçamentos e alinhamentos separados da estrutura JSX.
 
 ## Fluxo completo de interação
 
-1. O aplicativo inicia na rota `/`, renderizada por `index.tsx`.
-2. O usuário preenche usuário e senha.
-3. Ao tocar em **Entrar**, os dois campos são validados.
-4. Com os campos preenchidos, aparece o alerta de sucesso.
-5. Ao tocar em **OK**, o usuário vai para `/home`.
-6. Se o usuário ainda não possui conta, toca em **Cadastre-se** e vai para
-   `/signup`.
-7. Na tela de cadastro, usuário e senha são guardados no Zustand.
-8. A confirmação de senha é comparada com a senha global.
-9. Ao tocar em **Cadastrar** com dados válidos, aparece o alerta de sucesso.
-10. Ao tocar em **OK**, o usuário vai para `/home`.
+1. O aplicativo inicia na landing `/`, com logo, nome e botão **Começar**.
+2. Ao tocar em **Começar**, o usuário vai para `/login`.
+3. No login, preenche email e senha e toca em **Entrar**.
+4. Com credenciais válidas no Firebase, aparece o alerta de sucesso; em
+   **OK**, vai para `/home`. Com erro, os campos ficam com borda vermelha.
+5. Se não tem conta, toca em **Cadastre-se** e vai para `/signup`.
+6. No cadastro, email e senha vão para o Zustand; a confirmação é local.
+7. Com dados válidos, a conta é criada no Firebase, alerta de sucesso e
+   **OK** leva para `/home`. Senha curta mostra
+   `Senha fraca: use pelo menos 6 caracteres.`
 
 ## Limitações atuais
 
-- O login não verifica se o usuário existe.
-- O cadastro não salva dados em um banco.
-- Qualquer usuário e senha não vazios são aceitos no login.
+- A config do Firebase está hardcoded em `src/lib/firebase.ts` (mover para
+  `.env` com `EXPO_PUBLIC_*`).
+- O Firestore (`db`) está instanciado, mas nenhuma coleção é usada ainda.
+- A home exibe valores mockados (falta plugar previsão e alertas reais).
 - A senha fica apenas em memória enquanto o aplicativo está aberto.
-- A tela home ainda não possui funcionalidades além do texto.
-- `database/conexão.ts` ainda não possui uma conexão real com banco de dados.
 
 ## Arquivos de configuração
 
@@ -362,10 +420,13 @@ disponíveis:
 - `npm run ios`: inicia o Expo com a opção de iOS.
 - `npm run web`: inicia a versão web do projeto.
 - `npm run docker`: executa o script que detecta o IP e inicia o Docker Compose.
+- `npm run docker:fresh`: limpa os caches do Metro, recria os containers e
+  sobe tudo (fluxo oficial quando o celular mostra bundle antigo).
 
-As dependências principais são `expo`, `expo-router`, `react-native` e
-`zustand`. O `package-lock.json` registra as versões exatas instaladas pelo
-`npm ci` durante o build da imagem Docker.
+As dependências principais são `expo`, `expo-router`, `react-native`,
+`firebase`, `@expo/vector-icons`, `expo-linear-gradient` e `zustand`.
+O `package-lock.json` registra as versões exatas instaladas pelo `npm ci`
+durante o build da imagem Docker.
 
 ### `app.json`
 
@@ -433,15 +494,21 @@ docker compose up --build
 ```
 
 O parâmetro opcional `-HostIp` permite escolher manualmente o endereço quando
-há VPN, Ethernet e Wi-Fi ativos ao mesmo tempo.
+há VPN, Ethernet e Wi-Fi ativos ao mesmo tempo. O switch `-Fresh` executa o
+fluxo `docker:fresh` (limpa caches do Metro e recria os containers):
+
+```powershell
+.\scripts\start-docker.ps1 -Fresh
+```
 
 ### `.dockerignore`, `.env.example` e `.gitignore`
 
 - `.dockerignore`: evita enviar `node_modules`, cache do Expo, arquivos nativos
   gerados e configurações locais para o contexto do Docker.
-- `.env.example`: mostra o formato da variável de IP para execução manual.
+- `.env.example`: mostra o formato da variável de IP para execução manual e
+  traz o bloco comentado `EXPO_PUBLIC_FIREBASE_*` (template para o backend).
 - `.gitignore`: impede que dependências, caches, arquivos `.env` e credenciais
-  nativas sejam versionados.
+  nativas sejam versionados (inclui `.metro-health-check*`).
 
 ## Pré-requisitos
 
@@ -575,6 +642,35 @@ Abra o Docker Desktop, aguarde o Linux Engine iniciar e execute novamente:
 ```powershell
 npm run docker
 ```
+
+### Salvou o arquivo e o celular não atualizou (hot reload no Docker)
+
+Causa comprovada aqui: no Docker Desktop (Windows), escritas feitas no
+Windows não geram eventos de filesystem dentro do container (testado com
+`fs.watch` no container: zero eventos ao salvar). Sem o evento, o Metro não
+sabe que o arquivo mudou e continua servindo o bundle antigo.
+`CHOKIDAR_USEPOLLING` não cobre o watcher do Metro.
+
+O que fazer:
+
+- Fluxo oficial neste repo quando travar (bundle antigo no celular):
+
+```powershell
+npm run docker:fresh
+```
+
+Ele limpa os caches do Metro, recria os containers e sobe tudo de novo.
+O primeiro bundle demora mais porque é montado do zero — é o único caminho
+100% determinístico neste ambiente.
+- O `npm run docker` normal continua existindo e inalterado, mas pode
+  servir bundle velho após edições (limitação do watcher, acima).
+- Alternativa: rodar o Expo fora do Docker (`npx expo start --host lan`).
+  No Windows os eventos de arquivo são nativos e o Fast Refresh é
+  instantâneo. Isso não altera nada do Docker.
+
+Detalhe técnico: `metro.config.js` mantém `watcher.healthCheck` ativado como
+rede de segurança contra watchers totalmente mortos. Ele não cobre o caso
+acima, onde o watcher funciona mas não enxerga escritas vindas do Windows.
 
 ## Verificar o TypeScript
 
