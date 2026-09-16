@@ -17,33 +17,29 @@ import { Input } from "@/components/input";
 
 import { Button } from "@/components/button";
 
-import { useAuthStore } from "@/contexts/authContext";
+import { loginService } from "@/backend/auth.service";
 
-// Página para criar nova conta — rota /signup.
-// TODO(firebase): substituir validação local por authService.register(usuario, senha)
-// que vai salvar no banco. Não integrar ainda.
-
-export default function Signup() {
-  const { usuario, senha, setUsuarioLogin, setSenhaLogin } = useAuthStore();
-  const [inputConfirmarSenhaLogin, setConfirmarSenhaLogin] = useState("");
+// Tela de login — rota /login.
+// Autentica via loginService (hoje: usuário provisório admin/admin em código).
+// TODO(firebase): o service passará a autenticar com os dados do banco.
+export default function Login() {
+  const [inputUsuarioLogin, setUsuarioLogin] = useState("");
+  const [inputSenhaLogin, setSenhaLogin] = useState("");
   const [hasError, setHasError] = useState(false);
 
-  function handleSignUp() {
-    if (
-      !usuario.trim() ||
-      !senha.trim() ||
-      !inputConfirmarSenhaLogin.trim() ||
-      senha !== inputConfirmarSenhaLogin
-    ) {
+  async function handleSignIn() {
+    const result = await loginService({
+      username: inputUsuarioLogin,
+      password: inputSenhaLogin,
+    });
+    if (!result.ok) {
       setHasError(true);
-      return Alert.alert(
-        "Erro",
-        "Preencha todos os campos! ou suas senhas estão diferentes",
-      );
+      return Alert.alert("Erro", result.message);
     }
     setHasError(false);
+
     Alert.alert(
-      `Parabéns ${usuario}!`,
+      `Parabéns ${inputUsuarioLogin.trim()}!`,
       "Login realizado com sucesso!",
       [{ text: "OK", onPress: () => router.replace("/home") }],
     );
@@ -61,11 +57,13 @@ export default function Signup() {
       >
         <View style={styles.conteiner}>
           <Image
-            source={require("@/assets/img2.png")}
+            source={require("@/assets/img1.png")}
             style={styles.illustration}
           />
-          <Text style={styles.title}>Cadastrar</Text>
-          <Text style={styles.subtitle}>Crie sua conta para acessar!</Text>
+          <Text style={styles.title}>Entrar</Text>
+          <Text style={styles.subtitle}>
+            Acesse sua conta ou crie uma nova!
+          </Text>
           <View style={styles.form}>
             <Input
               placeholder="Usuário"
@@ -85,21 +83,12 @@ export default function Signup() {
                 setHasError(false);
               }}
             />
-            <Input
-              placeholder="Confirmar senha"
-              secureTextEntry
-              error={hasError}
-              onChangeText={(text: string) => {
-                setConfirmarSenhaLogin(text);
-                setHasError(false);
-              }}
-            />
-            <Button label="Cadastrar" onPress={handleSignUp} />
+            <Button label="Entrar" onPress={handleSignIn} />
           </View>
           <Text style={styles.footerText}>
-            Já tem uma conta?{" "}
-            <Link href="/login" style={styles.footerLink}>
-              Entre aqui
+            Não tem uma conta?{" "}
+            <Link href="/signup" style={styles.footerLink}>
+              Cadastre-se
             </Link>
           </Text>
         </View>
