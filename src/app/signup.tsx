@@ -20,6 +20,7 @@ import { Button } from "@/components/button";
 import { useAuthStore } from "@/contexts/authContext";
 
 import { auth } from "@/lib/firebase";
+import { getFriendlyAuthErrorMessage } from "@/lib/firebase-errors";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 
 // Página para criar nova conta — rota /signup.
@@ -48,9 +49,10 @@ export default function Signup() {
       await createUserWithEmailAndPassword(auth, usuario.trim(), senha);
     } catch (error: unknown) {
       setHasError(true);
-      const message =
-        error instanceof Error ? error.message : "Não foi possível cadastrar.";
-      return Alert.alert("Erro ao cadastrar", message);
+      return Alert.alert(
+        "Erro ao cadastrar",
+        getFriendlyAuthErrorMessage(error),
+      );
     }
     setHasError(false);
     Alert.alert(
@@ -79,8 +81,9 @@ export default function Signup() {
           <Text style={styles.subtitle}>Crie sua conta para acessar!</Text>
           <View style={styles.form}>
             <Input
-              placeholder="Usuário"
+              placeholder="Email"
               autoCapitalize="none"
+              keyboardType="email-address"
               error={hasError}
               onChangeText={(text: string) => {
                 setUsuarioLogin(text);

@@ -73,8 +73,9 @@ export default function Login() {
           </Text>
           <View style={styles.form}>
             <Input
-              placeholder="Usuário"
+              placeholder="Email"
               autoCapitalize="none"
+              keyboardType="email-address"
               error={hasError}
               onChangeText={(text: string) => {
                 setUsuarioLogin(text);
