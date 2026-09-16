@@ -7,19 +7,12 @@ import {
 
 type ButtonProps = TouchableOpacityProps & {
   label: string;
-  // "primary" (padrão): fundo azul, texto branco. "white": fundo branco, texto azul.
-  variant?: "primary" | "white";
 };
 
-export function Button({ label, variant = "primary", ...rest }: ButtonProps) {
-  const isWhite = variant === "white";
+export function Button({ label, ...rest }: ButtonProps) {
   return (
-    <TouchableOpacity
-      style={[styles.container, isWhite && styles.whiteContainer]}
-      activeOpacity={0.7}
-      {...rest}
-    >
-      <Text style={[styles.label, isWhite && styles.whiteLabel]}>{label}</Text>
+    <TouchableOpacity style={styles.container} activeOpacity={0.7} {...rest}>
+      <Text style={styles.label}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -37,11 +30,5 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: 600,
-  },
-  whiteContainer: {
-    backgroundColor: "#FFFFFF",
-  },
-  whiteLabel: {
-    color: "#3366FF",
   },
 });

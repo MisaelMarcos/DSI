@@ -1,100 +1,120 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-
-import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
-
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  Alert,
+} from "react-native";
+import { useState } from "react";
+import { Link, router } from "expo-router";
+import { Input } from "@/components/input";
 import { Button } from "@/components/button";
-import { LogoPlaceholder } from "@/components/logo-placeholder";
+import { auth } from "../../database/conexão"; // Ajustado para caminhar da pasta src/app para a raiz database/
+import { signInWithEmailAndPassword } from "firebase/auth";
 
-// Landing — rota /.
-// Fundo em gradiente azul-claro + logo destacada em card branco.
-export default function Landing() {
+export default function Index() {
+  // 1. Declarando as variáveis de estado para armazenar as credenciais digitadas
+  const [inputUsuarioLogin, setUsuarioLogin] = useState("");
+  const [inputSenhaLogin, setSenhaLogin] = useState("");
+
+  // 2. Função assíncrona correta para realizar o login no Firebase
+  async function handleSignIn() {
+    if (!inputUsuarioLogin.trim() || !inputSenhaLogin.trim()) {
+      Alert.alert("Erro", "Por favor, preencha todos os campos.");
+      return;
+    }
+
+    try {
+      // Autenticando com o Firebase Auth
+      await signInWithEmailAndPassword(auth, inputUsuarioLogin, inputSenhaLogin);
+
+      Alert.alert("Sucesso", "Login realizado com sucesso!", [
+        { text: "OK", onPress: () => router.replace("/home") }
+      ]);
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert("Erro", "E-mail ou senha incorretos.");
+    }
+  }
+
   return (
-    <LinearGradient colors={["#2F6BFF", "#4697ee"]} style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.select({ ios: "padding", android: "height" })}
+    >
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.container}>
-          <View style={styles.logoCard}>
-            <LogoPlaceholder size={200} />
-          </View>
-          <Text style={styles.title}>
-            Alerta<Text style={styles.titleBlue}>Chuva</Text>
+        <View style={styles.conteiner}>
+          <Image
+            source={require("@/assets/img1.png")}
+            style={styles.illustration}
+          />
+          <Text style={styles.title}>Entrar</Text>
+          <Text style={styles.subtitle}>
+            Acesse sua conta ou crie uma nova!
           </Text>
-          <Text style={styles.tagline}>
-            Informação para você se proteger da chuva
-          </Text>
-          <Text style={styles.city}>Recife</Text>
-          <View style={styles.cta}>
-            <Button
-              label="Começar"
-              variant="white"
-              onPress={() => router.push("/login")}
+          <View style={styles.form}>
+            <Input
+              placeholder="Usuário"
+              onChangeText={(text) => setUsuarioLogin(text)}
             />
+            <Input
+              placeholder="Senha"
+              secureTextEntry
+              onChangeText={(text) => setSenhaLogin(text)}
+            />
+            <Button label="Entrar" onPress={handleSignIn} />
           </View>
-          <Text style={styles.hint}>
-            Previsão horária • Alertas • Recife
+          <Text style={styles.footerText}>
+            Não tem uma conta?{" "}
+            <Link href="/signup" style={styles.footerLink}>
+              Cadastre-se
+            </Link>
           </Text>
         </View>
       </ScrollView>
-    </LinearGradient>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  conteiner: {
     flexGrow: 1,
+    backgroundColor: "#FDFDFD",
     padding: 32,
-    alignItems: "center",
-    justifyContent: "center",
   },
-  logoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 44,
-    padding: 14,
-    // Sombra no iOS.
-    shadowColor: "#0B2A5B",
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    // Sombra no Android.
-    elevation: 6,
+  illustration: {
+    width: "100%",
+    height: 330,
+    resizeMode: "contain",
+    marginTop: 40,
   },
   title: {
     fontSize: 32,
-    fontWeight: "900",
-    textAlign: "center",
-    marginTop: 8,
-    color: "#FFFFFF",
+    fontWeight: "900", // Alterado de 900 para "900" (string)
   },
-  titleBlue: {
-    color: "#3366FF",
-  },
-  tagline: {
+  subtitle: {
     fontSize: 16,
-    textAlign: "center",
-    color: "#FFFFFF",
-    marginTop: 8,
-    paddingHorizontal: 16,
   },
-  city: {
-    fontSize: 18,
-    fontWeight: "600",
-    textAlign: "center",
-    color: "#FFFFFF",
-    marginTop: 4,
-    opacity: 0.9,
-  },
-  cta: {
-    width: "100%",
+  form: {
     marginTop: 24,
+    gap: 12,
   },
-  hint: {
-    marginTop: 16,
-    fontSize: 13,
-    color: "#FFFFFF",
+  footerText: {
     textAlign: "center",
-    opacity: 0.85,
+    marginTop: 24,
+    color: "#585860",
+  },
+  footerLink: {
+    textAlign: "center",
+    marginTop: 24,
+    color: "#203bb3",
+    fontWeight: "900", // Alterado de 900 para "900" (string)
   },
 });

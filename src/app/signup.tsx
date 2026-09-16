@@ -1,5 +1,4 @@
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -18,35 +17,36 @@ import { Input } from "@/components/input";
 import { Button } from "@/components/button";
 
 import { useAuthStore } from "@/contexts/authContext";
+import { auth } from "@/../database/conexão";
 
-// Página para criar nova conta — rota /signup.
-// TODO(firebase): substituir validação local por authService.register(usuario, senha)
-// que vai salvar no banco. Não integrar ainda.
+import { createUserWithEmailAndPassword } from "firebase/auth";
+
+import { Alert } from "react-native";
+
+
+// Página para criar nova conta
 
 export default function Signup() {
   const { usuario, senha, setUsuarioLogin, setSenhaLogin } = useAuthStore();
   const [inputConfirmarSenhaLogin, setConfirmarSenhaLogin] = useState("");
-  const [hasError, setHasError] = useState(false);
 
-  function handleSignUp() {
-    if (
-      !usuario.trim() ||
-      !senha.trim() ||
-      !inputConfirmarSenhaLogin.trim() ||
-      senha !== inputConfirmarSenhaLogin
-    ) {
-      setHasError(true);
-      return Alert.alert(
-        "Erro",
-        "Preencha todos os campos! ou suas senhas estão diferentes",
-      );
-    }
-    setHasError(false);
-    Alert.alert(
-      `Parabéns ${usuario}!`,
-      "Login realizado com sucesso!",
-      [{ text: "OK", onPress: () => router.replace("/home") }],
-    );
+  async function handleSignIn() {
+    try {
+
+  const userCredential = await createUserWithEmailAndPassword(auth, usuario, senha);
+
+  Alert.alert("Sucesso", "Usuário cadastrado com sucesso!", [
+
+    { text: "OK", onPress: () => router.replace("/home") }
+
+  ]);
+
+} catch (error: any) {
+
+  Alert.alert("Erro ao cadastrar", error.message);
+
+}
+
   }
 
   return (
@@ -67,38 +67,22 @@ export default function Signup() {
           <Text style={styles.title}>Cadastrar</Text>
           <Text style={styles.subtitle}>Crie sua conta para acessar!</Text>
           <View style={styles.form}>
-            <Input
-              placeholder="Usuário"
-              autoCapitalize="none"
-              error={hasError}
-              onChangeText={(text: string) => {
-                setUsuarioLogin(text);
-                setHasError(false);
-              }}
-            />
+            <Input placeholder="Usuário" onChangeText={setUsuarioLogin} />
             <Input
               placeholder="Senha"
               secureTextEntry
-              error={hasError}
-              onChangeText={(text: string) => {
-                setSenhaLogin(text);
-                setHasError(false);
-              }}
+              onChangeText={setSenhaLogin}
             />
             <Input
               placeholder="Confirmar senha"
               secureTextEntry
-              error={hasError}
-              onChangeText={(text: string) => {
-                setConfirmarSenhaLogin(text);
-                setHasError(false);
-              }}
+              onChangeText={setConfirmarSenhaLogin}
             />
-            <Button label="Cadastrar" onPress={handleSignUp} />
+            <Button label="Cadastrar" onPress={handleSignIn} />
           </View>
           <Text style={styles.footerText}>
             Já tem uma conta?{" "}
-            <Link href="/login" style={styles.footerLink}>
+            <Link href="/" style={styles.footerLink}>
               Entre aqui
             </Link>
           </Text>
@@ -111,12 +95,12 @@ export default function Signup() {
 const styles = StyleSheet.create({
   conteiner: {
     flexGrow: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FDFDFD",
     padding: 32,
   },
   illustration: {
     width: "100%",
-    height: 260,
+    height: 330,
     resizeMode: "contain",
     marginTop: 40,
   },

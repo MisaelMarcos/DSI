@@ -1,12 +1,7 @@
 import { StyleSheet, TextInput, TextInputProps } from "react-native";
 
-type InputProps = TextInputProps & {
-  // Quando true, a borda fica vermelha (ex.: erro de validação).
-  error?: boolean;
-};
-
-export function Input({ error, style, ...rest }: InputProps) {
-  return <TextInput style={[styles.input, error && styles.error, style]} {...rest} />;
+export function Input({ ...rest }: TextInputProps) {
+  return <TextInput style={styles.input} {...rest} />;
 }
 
 const styles = StyleSheet.create({
@@ -18,9 +13,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 16,
     paddingLeft: 12,
-  },
-  error: {
-    borderColor: "#EF4444",
-    borderWidth: 2,
   },
 });
