@@ -1,6 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  initializeAuth,
+  // Exportado pelo build react-native (usado pelo Metro em runtime),
+  // mas ausente nos tipos web que o tsc resolve por padrão.
+  // @ts-expect-error: tipos RN não visíveis ao tsc (ver index.rn.d.ts)
+  getReactNativePersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Config trazida da branch Firebase-version (mantida hardcoded por decisão
 // explícita no merge — ideal futuro: mover para .env com EXPO_PUBLIC_*).
@@ -15,5 +22,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+// Persistência em AsyncStorage: sem isso o Auth cai em memória e a sessão
+// se perde ao reiniciar o app (warning @firebase/auth no LogBox).
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
 export const db = getFirestore(app);
