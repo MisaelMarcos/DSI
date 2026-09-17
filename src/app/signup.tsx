@@ -11,12 +11,12 @@ import {
   View,
 } from "react-native";
 
-import { useState } from "react";
-import { Link, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Link, router } from "expo-router";
+import { useState } from "react";
 
-import { Input } from "@/components/input";
 import { Button } from "@/components/button";
+import { Input } from "@/components/input";
 import { useAuthStore } from "@/contexts/authContext";
 
 import { bairrosRecife } from "@/data/bairros";
@@ -26,12 +26,7 @@ import { getFriendlyAuthErrorMessage } from "@/lib/firebase-errors";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 
 export default function Signup() {
-  const {
-    usuario,
-    senha,
-    setUsuarioLogin,
-    setSenhaLogin,
-  } = useAuthStore();
+  const { usuario, senha, setUsuarioLogin, setSenhaLogin } = useAuthStore();
 
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [bairro, setBairro] = useState("");
@@ -56,11 +51,7 @@ export default function Signup() {
       temNumero,
       temEspecial,
       forte:
-        temTamanho &&
-        temMaiuscula &&
-        temMinuscula &&
-        temNumero &&
-        temEspecial,
+        temTamanho && temMaiuscula && temMinuscula && temNumero && temEspecial,
     };
   }
 
@@ -69,10 +60,7 @@ export default function Signup() {
   async function handleSignUp() {
     if (!usuario.trim()) {
       setHasError(true);
-      return Alert.alert(
-        "Campo obrigatório",
-        "Digite um usuário.",
-      );
+      return Alert.alert("Campo obrigatório", "Digite um usuário.");
     }
 
     if (!bairro) {
@@ -125,12 +113,10 @@ export default function Signup() {
     <SafeAreaViewWrapper>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={
-          Platform.select({
-            ios: "padding",
-            android: "height",
-          })
-        }
+        behavior={Platform.select({
+          ios: "padding",
+          android: "height",
+        })}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -138,27 +124,20 @@ export default function Signup() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.container}>
-
             <Image
               source={require("@/assets/img2.png")}
               style={styles.illustration}
             />
 
-            <Text style={styles.title}>
-              Criar conta
-            </Text>
+            <Text style={styles.title}>Criar conta</Text>
 
             <Text style={styles.subtitle}>
-              Cadastre-se para receber informações de chuva
-              para o seu bairro.
+              Cadastre-se para receber informações de chuva para o seu bairro.
             </Text>
 
             {/* USUÁRIO */}
             <View style={styles.form}>
-
-              <Text style={styles.label}>
-                Usuário
-              </Text>
+              <Text style={styles.label}>Usuário</Text>
 
               <Input
                 placeholder="Digite seu usuário"
@@ -171,43 +150,29 @@ export default function Signup() {
               />
 
               {/* BAIRRO */}
-              <Text style={styles.label}>
-                Seu bairro
-              </Text>
+              <Text style={styles.label}>Seu bairro</Text>
 
               <Pressable
                 style={styles.bairroButton}
                 onPress={() => setModalBairro(true)}
               >
                 <View style={styles.bairroLeft}>
-                  <Ionicons
-                    name="location-outline"
-                    size={20}
-                    color="#2F6BFF"
-                  />
+                  <Ionicons name="location-outline" size={20} color="#2F6BFF" />
 
                   <Text
                     style={
-                      bairro
-                        ? styles.bairroText
-                        : styles.bairroPlaceholder
+                      bairro ? styles.bairroText : styles.bairroPlaceholder
                     }
                   >
                     {bairro || "Selecione seu bairro"}
                   </Text>
                 </View>
 
-                <Ionicons
-                  name="chevron-down"
-                  size={20}
-                  color="#64748B"
-                />
+                <Ionicons name="chevron-down" size={20} color="#64748B" />
               </Pressable>
 
               {/* SENHA */}
-              <Text style={styles.label}>
-                Senha
-              </Text>
+              <Text style={styles.label}>Senha</Text>
 
               <View style={styles.passwordContainer}>
                 <Input
@@ -222,16 +187,10 @@ export default function Signup() {
 
                 <Pressable
                   style={styles.eyeButton}
-                  onPress={() =>
-                    setMostrarSenha(!mostrarSenha)
-                  }
+                  onPress={() => setMostrarSenha(!mostrarSenha)}
                 >
                   <Ionicons
-                    name={
-                      mostrarSenha
-                        ? "eye-off-outline"
-                        : "eye-outline"
-                    }
+                    name={mostrarSenha ? "eye-off-outline" : "eye-outline"}
                     size={22}
                     color="#64748B"
                   />
@@ -241,10 +200,7 @@ export default function Signup() {
               {/* FORÇA DA SENHA */}
               {senha.length > 0 && (
                 <View style={styles.passwordRules}>
-
-                  <Text style={styles.rulesTitle}>
-                    Sua senha precisa ter:
-                  </Text>
+                  <Text style={styles.rulesTitle}>Sua senha precisa ter:</Text>
 
                   <Regra
                     texto="8 caracteres ou mais"
@@ -261,23 +217,17 @@ export default function Signup() {
                     valido={senhaStatus.temMinuscula}
                   />
 
-                  <Regra
-                    texto="Um número"
-                    valido={senhaStatus.temNumero}
-                  />
+                  <Regra texto="Um número" valido={senhaStatus.temNumero} />
 
                   <Regra
                     texto="Um caractere especial"
                     valido={senhaStatus.temEspecial}
                   />
-
                 </View>
               )}
 
               {/* CONFIRMAR SENHA */}
-              <Text style={styles.label}>
-                Confirmar senha
-              </Text>
+              <Text style={styles.label}>Confirmar senha</Text>
 
               <View style={styles.passwordContainer}>
                 <Input
@@ -292,17 +242,11 @@ export default function Signup() {
 
                 <Pressable
                   style={styles.eyeButton}
-                  onPress={() =>
-                    setMostrarConfirmacao(
-                      !mostrarConfirmacao,
-                    )
-                  }
+                  onPress={() => setMostrarConfirmacao(!mostrarConfirmacao)}
                 >
                   <Ionicons
                     name={
-                      mostrarConfirmacao
-                        ? "eye-off-outline"
-                        : "eye-outline"
+                      mostrarConfirmacao ? "eye-off-outline" : "eye-outline"
                     }
                     size={22}
                     color="#64748B"
@@ -311,24 +255,15 @@ export default function Signup() {
               </View>
 
               {/* BOTÃO */}
-              <Button
-                label="Criar minha conta"
-                onPress={handleSignUp}
-              />
-
+              <Button label="Criar minha conta" onPress={handleSignUp} />
             </View>
 
             <Text style={styles.footerText}>
               Já possui uma conta?{" "}
-
-              <Link
-                href="/login"
-                style={styles.footerLink}
-              >
+              <Link href="/login" style={styles.footerLink}>
                 Entrar
               </Link>
             </Text>
-
           </View>
         </ScrollView>
 
@@ -340,25 +275,13 @@ export default function Signup() {
           onRequestClose={() => setModalBairro(false)}
         >
           <View style={styles.modalBackground}>
-
             <View style={styles.modalContainer}>
-
               <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Escolha seu bairro</Text>
 
-                <Text style={styles.modalTitle}>
-                  Escolha seu bairro
-                </Text>
-
-                <Pressable
-                  onPress={() => setModalBairro(false)}
-                >
-                  <Ionicons
-                    name="close"
-                    size={26}
-                    color="#0F172A"
-                  />
+                <Pressable onPress={() => setModalBairro(false)}>
+                  <Ionicons name="close" size={26} color="#0F172A" />
                 </Pressable>
-
               </View>
 
               <ScrollView>
@@ -371,18 +294,13 @@ export default function Signup() {
                       setModalBairro(false);
                     }}
                   >
-                    <Text style={styles.bairroItemText}>
-                      {item}
-                    </Text>
+                    <Text style={styles.bairroItemText}>{item}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
-
             </View>
-
           </View>
         </Modal>
-
       </KeyboardAvoidingView>
     </SafeAreaViewWrapper>
   );
@@ -390,32 +308,16 @@ export default function Signup() {
 
 /* COMPONENTE DA REGRA DA SENHA */
 
-function Regra({
-  texto,
-  valido,
-}: {
-  texto: string;
-  valido: boolean;
-}) {
+function Regra({ texto, valido }: { texto: string; valido: boolean }) {
   return (
     <View style={styles.regra}>
       <Ionicons
-        name={
-          valido
-            ? "checkmark-circle"
-            : "ellipse-outline"
-        }
+        name={valido ? "checkmark-circle" : "ellipse-outline"}
         size={17}
         color={valido ? "#16A34A" : "#94A3B8"}
       />
 
-      <Text
-        style={
-          valido
-            ? styles.regraValida
-            : styles.regraTexto
-        }
-      >
+      <Text style={valido ? styles.regraValida : styles.regraTexto}>
         {texto}
       </Text>
     </View>
@@ -424,26 +326,16 @@ function Regra({
 
 /* SAFE AREA */
 
-function SafeAreaViewWrapper({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { SafeAreaView } = require(
-    "react-native-safe-area-context",
-  );
+function SafeAreaViewWrapper({ children }: { children: React.ReactNode }) {
+  const { SafeAreaView } = require("react-native-safe-area-context");
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      {children}
-    </SafeAreaView>
-  );
+  return <SafeAreaView style={styles.safeArea}>{children}</SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#ffffff",
   },
 
   scrollContent: {
