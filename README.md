@@ -46,11 +46,14 @@ desenvolvimento dentro do Docker.
 │   │   ├── auth.repository.ts # Interface p/ camadas futuras de persistência
 │   │   ├── auth.service.ts   # Service legado (telas usam Firebase direto)
 │   │   ├── firebase.config.template.ts # Template de config (vazio)
-│   │   └── README.md         # Guia para o time de backend
+│   │   ├── README.md         # Guia para o time de backend
+│   │   └── pipeline/           # Coleta de dados de alagamento (Python)
 │   ├── theme.ts              # Tokens de cor/raio/espaçamento
 │   └── assets/               # img1, img2 e logo.png usadas nas telas
 ├── docs/
-│   └── design-referencias.md # Guia de design travado com o time
+│   ├── design-referencias.md # Guia de design travado com o time
+│   ├── bairros-risco.md     # Relatório de risco por bairro (gerado)
+│   └── plano-integracao-ml.md # Plano de integração do ML
 ├── scripts/
 │   └── start-docker.ps1     # Detecta o IP e inicia o Docker (-Fresh, -HostIp)
 ├── metro.config.js           # Metro + watcher.healthCheck p/ Docker Windows
@@ -352,6 +355,35 @@ persistência no Firestore):
 - `firebase.config.template.ts`: objeto de config vazio (referência).
 - `README.md`: schema sugerido da coleção `users`
   (`username` único, `passwordHash` nunca em texto puro, `createdAt`).
+
+### `src/backend/pipeline/`: dados de alagamento (Python)
+
+Coleta e consolida ocorrências de alagamento em Recife para gerar o score de
+risco por bairro usado no alerta (chuva prevista alta + bairro propenso →
+alerta). A base fica em CSV local (`pipeline/data/`); Firebase entra depois
+como sync de leitura.
+
+Scripts (rodar na ordem, ver `src/backend/pipeline/README.md`):
+
+- `coletar_noticias.py`: Google News RSS + GDELT + Bing News → `bruto_noticias.jsonl`
+- `coletar_inmet.py`: avisos INMET via Google News → `bruto_inmet.jsonl`
+- `coletar_defesacivil.py`: Defesa Civil PE (RSS + site) → `bruto_defesacivil.jsonl`
+- `enriquecer_artigos.py`: baixa o corpo das matérias (decodifica links do
+  Google News) → `corpos.jsonl`
+- `extrair_bairros.py`: unifica tudo e identifica o bairro por match com
+  `data/bairros_recife.csv` → `ocorrencias.csv`
+- `enriquecer_geo.py`: geocodifica bairros (Nominatim) e busca elevação
+  (Open-Meteo) → `bairros_geo.csv`
+- `score_risco.py`: frequência ponderada (fonte oficial 2×, recência) +
+  elevação invertida → `score_bairro.csv` (score 0–100, nível baixo/médio/alto)
+- `resumo.py`: ranking de bairros, contagens por fonte e ano
+- `gerar_relatorio.py`: gera `docs/bairros-risco.md` (tabela, fontes, método)
+
+Métrica de alerta prevista: usuário cadastra endereço → bairro pelo centróide
+mais próximo em `bairros_geo.csv` → se o ML prever chuva ≥ limiar e o
+`score_risco` for alto, o app envia alerta de alagamento.
+
+Setup: `cd src/backend/pipeline && py -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`.
 
 ### `src/theme.ts`, logo e `metro.config.js`
 

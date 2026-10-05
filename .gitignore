@@ -47,3 +47,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Python
+__pycache__/
+.venv/
+
+# pipeline caches brutos (regeneráveis)
+src/backend/pipeline/data/bruto_*.jsonl
+src/backend/pipeline/data/corpos.jsonl
