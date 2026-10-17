@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: usuário autenticado
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Coleção principal do app: perfil do usuário
+    // Cada usuário só lê/escreve o próprio documento users/{uid}
+    match /users/{userId} {
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll(['email', 'bairro', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.bairro is string
+        && request.resource.data.createdAt is string
+        // impede gravar senha em texto puro
+        && !('password' in request.resource.data)
+        && !('senha' in request.resource.data)
+        && !('passwordHash' in request.resource.data);
+
+      allow read: if isOwner(userId);
+
+      allow update: if isOwner(userId)
+        && request.resource.data.uid == resource.data.uid
+        && !('password' in request.resource.data)
+        && !('senha' in request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // Listagem de bairros — somente leitura autenticada
+    // Compatível com pipeline/data/bairros_geo.csv quando for para o Firestore
+    match /bairros/{bairroId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Alertas / ocorrências — somente leitura autenticada
+    // Escrita futura via backend/admin SDK ou Cloud Function, nunca direto do client
+    match /alertas/{alertId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /ocorrencias/{ocId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Previsões cacheadas — somente leitura autenticada
+    match /previsoes/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Scores de risco por bairro (gerado por pipeline/score_risco.py)
+    match /scores/{bairroId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Regra padrão: nega tudo que não foi explicitamente liberado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
