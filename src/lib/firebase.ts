@@ -1,8 +1,9 @@
 import { initializeApp } from "firebase/app";
 import {
+  getAuth,
   initializeAuth,
   // Exportado pelo build react-native (usado pelo Metro em runtime),
-  // mas ausente nos tipos web que o tsc resolve por padrão.
+  // mas ausente nos builds web/node — por isso o guard abaixo.
   // @ts-expect-error: tipos RN não visíveis ao tsc (ver index.rn.d.ts)
   getReactNativePersistence,
 } from "firebase/auth";
@@ -22,9 +23,16 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-// Persistência em AsyncStorage: sem isso o Auth cai em memória e a sessão
-// se perde ao reiniciar o app (warning @firebase/auth no LogBox).
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+// No React Native o Metro resolve `firebase/auth` para o build RN, que tem
+// `getReactNativePersistence` (persistência em AsyncStorage). No bundle web
+// (condição "browser") esse export NÃO existe e chamá-lo direto derrubava o
+// app com "(0, _firebaseAuth.getReactNativePersistence) is not a function".
+// O guard mantém a persistência no nativo e cai no getAuth() no web/node,
+// que usa a persistência padrão da plataforma.
+export const auth =
+  typeof getReactNativePersistence === "function"
+    ? initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      })
+    : getAuth(app);
 export const db = getFirestore(app);
