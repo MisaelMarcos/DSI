@@ -1,14 +1,14 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
-  initializeAuth,
   // Exportado pelo build react-native (usado pelo Metro em runtime),
   // mas ausente nos builds web/node — por isso o guard abaixo.
   // @ts-expect-error: tipos RN não visíveis ao tsc (ver index.rn.d.ts)
   getReactNativePersistence,
+  initializeAuth,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Config trazida da branch Firebase-version (mantida hardcoded por decisão
 // explícita no merge — ideal futuro: mover para .env com EXPO_PUBLIC_*).

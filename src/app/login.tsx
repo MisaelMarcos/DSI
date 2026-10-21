@@ -48,7 +48,7 @@ export default function Login() {
     Alert.alert(
       `Parabéns ${inputUsuarioLogin.trim()}!`,
       "Login realizado com sucesso!",
-      [{ text: "OK", onPress: () => router.replace("/home") }],
+      [{ text: "OK", onPress: () => router.replace("/tabs/home") }],
     );
   }
 
