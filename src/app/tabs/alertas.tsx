@@ -200,13 +200,21 @@ export default function Alertas() {
       setBairro(novoBairro);
       setModalBairro(false);
 
+      const perfilRef = doc(db, "users", usuario.uid);
+      // A regra do Firestore exige `createdAt` na criação do documento.
+      // Como o setDoc usa merge, checamos antes para não sobrescrever a
+      // data de criação original em cada atualização de bairro.
+      const perfilSnap = await getDoc(perfilRef);
+      const agora = new Date().toISOString();
+
       await setDoc(
-        doc(db, "users", usuario.uid),
+        perfilRef,
         {
           uid: usuario.uid,
           email: usuario.email ?? "",
           bairro: novoBairro,
-          updatedAt: new Date().toISOString(),
+          updatedAt: agora,
+          ...(perfilSnap.exists() ? {} : { createdAt: agora }),
         },
         { merge: true }
       );
