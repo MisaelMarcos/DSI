@@ -27,16 +27,20 @@ fontes["detalhes"] = fontes.apply(
 detalhes = dict(zip(fontes["bairro"], fontes["detalhes"]))
 
 def decisao(nivel):
-    return {"alto": "ALERTA se chuva ≥ limiar", "medio": "ATENÇÃO se chuva forte"}.get(
-        str(nivel), "só info de chuva"
-    )
+    return {
+        "alto": "ALERTA se chuva ≥ limiar",
+        "medio": "ATENÇÃO se chuva forte",
+        "baixo": "apenas informação de chuva",
+        "sem_historico": "sem histórico de alagamento",
+    }.get(str(nivel), "apenas informação de chuva")
 
 linhas = []
 for _, r in score.iterrows():
     linhas.append(
-        f"| {r['bairro']} | {r['frequencia']} | {r.get('elevacao_m', '')} | "
-        f"{r.get('score_freq', '')} | {r.get('score_elev', '')} | {r['score_risco']} | "
-        f"{r['nivel']} | {decisao(r['nivel'])} |"
+        f"| {r['bairro']} | {int(r.get('ocorrencias', 0))} | {r['frequencia']} | "
+        f"{r.get('elevacao_m', '')} | {r.get('score_freq', '')} | "
+        f"{r.get('score_elev', '')} | {r['score_risco']} | {r['nivel']} | "
+        f"{decisao(r['nivel'])} |"
     )
 
 fontes_linhas = []
@@ -52,18 +56,22 @@ de `ocorrencias.csv`, `bairros_geo.csv` e `score_bairro.csv`.
 
 - Ocorrências coletadas de Google News RSS, GDELT e Bing News (tipo `noticia`)
   e menções a INMET/Defesa Civil PE (tipo `alerta_oficial`).
+- Lista canônica: 94 bairros oficiais (Lei Municipal 16.293/1997).
 - Peso por ocorrência: fonte oficial 2×, notícia 1×; recência: ≥2024 = 1,5×,
   ≥2020 = 1×, anterior = 0,5×.
-- `score_freq` = frequência ponderada normalizada 0–100.
+- `score_freq` = frequência ponderada normalizada 0–100 entre os bairros com
+  ocorrências.
 - `elevacao_m` = altitude do centróide do bairro (Open-Meteo/SRTM); mais baixo,
   maior o `score_elev`.
 - `score_risco` = 0,6·score_freq + 0,4·score_elev. Faixas: ≤33 baixo,
   34–66 médio, >66 alto.
+- Bairros sem ocorrências ficam com `nivel = sem_historico`; neles o score usa
+  apenas a elevação e não é apresentado como risco no app.
 
 ## Bairros
 
-| Bairro | Freq. ponderada | Elevação (m) | Score freq | Score elev | Score risco | Nível | Decisão |
-|---|---|---|---|---|---|---|---|
+| Bairro | Ocorrências | Freq. ponderada | Elevação (m) | Score freq | Score elev | Score risco | Nível | Decisão |
+|---|---|---|---|---|---|---|---|---|
 {chr(10).join(linhas)}
 
 ## Fontes por bairro

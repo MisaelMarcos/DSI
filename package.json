@@ -36,6 +36,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "sync:firebase": "node scripts/sync-firebase.mjs",
+    "sync:firebase:apply": "node scripts/sync-firebase.mjs --apply",
     "docker": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-docker.ps1",
     "docker:fresh": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-docker.ps1 -Fresh"
   },

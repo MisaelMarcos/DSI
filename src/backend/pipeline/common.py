@@ -64,3 +64,8 @@ def carregar_bairros():
         if nome:
             bairros.append(nome)
     return bairros
+
+
+def slug_bairro(nome: str) -> str:
+    """Mesmo formato de slug usado no app (src/lib/bairros.ts)."""
+    return re.sub(r"[^a-z0-9]+", "-", normalizar(nome)).strip("-")

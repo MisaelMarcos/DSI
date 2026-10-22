@@ -26,11 +26,17 @@ CAMPOS = [
     "descricao",
 ]
 
+# O bairro oficial "Recife" (Recife Antigo) não pode ser identificado pela
+# palavra "Recife" sozinha: ela aparece em praticamente toda notícia sobre a
+# cidade. Só marcamos quando o texto fala explicitamente de "Recife Antigo".
+PADROES_AMBIGUOS = {"Recife": "recife antigo"}
+
 
 def extrair_bairro(texto: str, bairros_norm: dict):
     texto = normalizar(texto)
     for norm, original in bairros_norm.items():
-        if f" {norm} " in f" {texto} ":
+        alvo = PADROES_AMBIGUOS.get(original, norm)
+        if f" {alvo} " in f" {texto} ":
             return original
     return "nao_identificado"
 
