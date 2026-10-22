@@ -35,7 +35,8 @@ desenvolvimento dentro do Docker.
 │   │   ├── input.tsx         # Campo de texto reutilizável (prop error)
 │   │   └── logo-placeholder.tsx # Logo oficial (src/assets/logo.png)
 │   ├── contexts/
-│   │   └── authContext.tsx   # Store global do Zustand
+│   │   ├── authContext.tsx   # Store global do Zustand (campos dos formulários)
+│   │   └── sessionContext.tsx # Sessão do Firebase: restaura login salvo, `logout`
 │   ├── lib/
 │   │   ├── firebase.ts       # init do Firebase; exporta `auth` e `db`
 │   │   └── firebase-errors.ts # Códigos auth/* → mensagens amigáveis PT-BR
@@ -232,8 +233,9 @@ estilo Climatempo (ícones `Ionicons` de `@expo/vector-icons`): cabeçalho com
 saudação + localização (`Recife, PE`), card principal com condição atual
 (temperatura, status, aviso), card de alerta de chuva forte, previsão das
 próximas horas (scroll horizontal), grade de condições (umidade, vento,
-temperatura, pressão) e `Sair da conta`, que volta para `/` com
-`router.replace("/")`.
+temperatura, pressão) e `Sair da conta`, que chama `logout()` de
+`useSession` (`signOut` do Firebase); ao zerar a sessão, o router leva para
+`/login` automaticamente.
 
 Os valores exibidos ainda são mockados no código — falta plugar previsão e
 alertas reais (Firebase/API).
@@ -293,8 +295,13 @@ Atualmente os botões usados são:
 - **Começar** (landing, variante branca): navega para `/login`.
 - **Entrar**: chama `handleSignIn` da tela de login.
 - **Cadastrar**: chama `handleSignUp` da tela de cadastro.
-- **Sair** (home): volta para `/`.
-- **OK** nos alertas de sucesso: navega para `/home`.
+- **Sair** (home): encerra a sessão (`logout`) e volta ao login.
+
+### Login persistente: `sessionContext.tsx` e `_layout.tsx`
+
+O Firebase restaura o usuário a partir do disco sem rede, então o app abre
+logado mesmo offline. A sessão só termina com `logout()`, ao revogar o
+usuário no console ou ao limpar os dados do app.
 
 ### `src/contexts/authContext.tsx`: store Zustand
 

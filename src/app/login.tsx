@@ -11,7 +11,7 @@ import {
 
 import { useState } from "react";
 
-import { Link, router } from "expo-router";
+import { Link } from "expo-router";
 
 import { Input } from "@/components/input";
 
@@ -45,10 +45,10 @@ export default function Login() {
     }
     setHasError(false);
 
+    // Sem router.replace aqui: ao logar, o onAuthStateChanged atualiza a sessão e o guard em _layout.tsx leva o usuário para /tabs/home.
     Alert.alert(
       `Parabéns ${inputUsuarioLogin.trim()}!`,
       "Login realizado com sucesso!",
-      [{ text: "OK", onPress: () => router.replace("/tabs/home") }],
     );
   }
 
