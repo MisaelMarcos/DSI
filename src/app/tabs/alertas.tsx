@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
+import { isRunningInExpoGo } from "expo";
 import { router } from "expo-router";
 import {
   onAuthStateChanged,
@@ -29,6 +29,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -198,8 +199,11 @@ export default function Alertas() {
 
     setSalvandoPreferencia(categoria);
 
+    const pushDisponivel = Platform.OS !== "web" && !isRunningInExpoGo();
+
     try {
-      if (ativar) {
+      if (ativar && pushDisponivel) {
+        const Notifications = await import("expo-notifications");
         const permissaoAtual =
           await Notifications.getPermissionsAsync();
 
@@ -233,9 +237,11 @@ export default function Alertas() {
 
       Alert.alert(
         ativar ? "Notificações ativadas" : "Notificações desativadas",
-        ativar
-          ? "Sua preferência foi salva neste dispositivo."
-          : "Você pode ativar essa opção novamente quando quiser."
+        ativar && !pushDisponivel
+          ? "Sua preferência foi salva, mas o envio de avisos só funciona em uma versão com development build."
+          : ativar
+            ? "Sua preferência foi salva neste dispositivo."
+            : "Você pode ativar essa opção novamente quando quiser."
       );
     } catch (erro) {
       console.error("Erro ao configurar notificações:", erro);

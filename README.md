@@ -34,6 +34,10 @@ npm install
 npx expo start --host lan
 ```
 
+No **Expo Go**, os interruptores de notificação salvam somente a preferência
+local; o envio real de push exige uma development build, porque o Expo Go não
+inclui o módulo nativo do `expo-notifications` no Android (SDK 53+).
+
 ### 2. Rodar o pipeline (opcional)
 
 Pré-requisitos: Python 3.10+ (testado com 3.14) e internet para os coletores.
@@ -104,6 +108,9 @@ publicados.
 - **Firebase (Auth + Firestore)**: login/cadastro por email/senha e dados do
   app no Firestore (`users`, `scores` e `bairros`). Configuração em
   `src/lib/firebase.ts`; pacote `firebase` instalado.
+- **expo-notifications**: instalado para as notificações push futuras; no
+  Expo Go os interruptores salvam apenas a preferência local, e o envio real
+  exige uma development build.
 - **Docker**: ambiente padronizado para executar o servidor do Expo.
 
 ## Estrutura do projeto
@@ -331,6 +338,19 @@ Bairros sem ocorrências são exibidos como **sem histórico** — o app não
 inventa um nível de risco para eles. A previsão meteorológica mockada foi
 removida.
 
+### `src/app/tabs/alertas.tsx`: bairro e preferências
+
+Essa é a rota `/tabs/alertas`. A tela carrega o bairro salvo em `users/{uid}`,
+permite trocar por um dos 94 bairros oficiais e mostra o risco histórico do
+bairro selecionado via `useScoreBairro` (`scores/{slug}`).
+
+Os interruptores de notificação **salvam apenas a preferência local** no
+`AsyncStorage` (`@AlertaChuva:{uid}:chuva` e `@AlertaChuva:{uid}:desastre`).
+No Expo Go e na web o app não solicita permissão nativa; fora desses ambientes,
+`alterarNotificacao` importa `expo-notifications` dinamicamente e pede a
+permissão do sistema. O envio real de push ainda não está implementado e
+depende de uma **development build**.
+
 ### `src/components/input.tsx`: componente `Input`
 
 Esse componente encapsula o `TextInput` do React Native para que os campos
@@ -543,7 +563,8 @@ espaçamentos e alinhamentos separados da estrutura JSX.
    A conta é criada no Firebase Auth e o perfil (`users/{uid}`) é salvo no
    Firestore com `createdAt`.
 4. Na aba **Alertas**, o usuário pode trocar o bairro e ativar/desativar as
-   preferências de notificação.
+   preferências de notificação (salvas localmente no aparelho; o envio real de
+   push depende de uma development build).
 5. A aba **Início** lê `scores/{slug}` e mostra o risco histórico do bairro.
    Sem histórico, exibe "sem histórico" em vez de inventar um nível.
 6. A previsão de chuva (ML) ainda não está integrada; ela será combinada com
@@ -558,6 +579,10 @@ espaçamentos e alinhamentos separados da estrutura JSX.
   `scripts/sync-firebase.mjs` com Admin SDK.
 - A previsão de chuva (modelo de ML) ainda não está integrada; o app exibe o
   risco histórico do bairro e um aviso de integração em desenvolvimento.
+- As notificações push ainda não são enviadas: os interruptores guardam apenas
+  a preferência local. O `expo-notifications` não carrega no Expo Go (Android,
+  SDK 53+), então o teste no celular usa o Expo Go sem o módulo nativo; para
+  push real será preciso gerar uma development build.
 - A senha fica apenas em memória enquanto o aplicativo está aberto.
 
 ## Arquivos de configuração
