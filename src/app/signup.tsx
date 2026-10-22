@@ -1,4 +1,5 @@
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -19,8 +20,10 @@ import { Input } from "@/components/input";
 import { useAuthStore } from "@/contexts/authContext";
 import { bairrosRecife } from "@/data/bairros";
 
-import { auth } from "@/lib/firebase";
+import { normalizarBairroOficial } from "@/lib/bairros";
+import { auth, db } from "@/lib/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 
 export default function Signup() {
   const { usuario, senha, setUsuarioLogin, setSenhaLogin } =
@@ -112,6 +115,31 @@ export default function Signup() {
         "Cadastro realizado com sucesso. UID:",
         credencial.user.uid
       );
+
+      const bairroOficial = normalizarBairroOficial(bairro) || bairro;
+      const agora = new Date().toISOString();
+
+      // A conta já foi criada; se o perfil falhar, o usuário ainda entra e
+      // pode escolher o bairro novamente na aba Alertas.
+      try {
+        await setDoc(
+          doc(db, "users", credencial.user.uid),
+          {
+            uid: credencial.user.uid,
+            email,
+            bairro: bairroOficial,
+            createdAt: agora,
+            updatedAt: agora,
+          },
+          { merge: true }
+        );
+      } catch (erroPerfil) {
+        console.error("Erro ao salvar perfil no Firestore:", erroPerfil);
+        Alert.alert(
+          "Conta criada",
+          "Não foi possível salvar seu bairro agora. Selecione o bairro na aba Alertas."
+        );
+      }
 
       setHasError(false);
       setMensagemErro("");

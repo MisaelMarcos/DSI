@@ -12,7 +12,7 @@ desenvolvimento dentro do Docker.
   `src/app`.
 - **TypeScript**: tipagem dos componentes, propriedades e estado.
 - **Zustand**: armazenamento global dos dados de usuário e senha.
-- **expo-linear-gradient**: fundo em gradiente da landing page.
+- **expo-linear-gradient**: gradientes visuais (dependência mantida).
 - **Firebase (Auth integrado)**: login e cadastro por email/senha com
   `signInWithEmailAndPassword` / `createUserWithEmailAndPassword`
   (`src/lib/firebase.ts`). Instância do Firestore (`db`) exportada para uso
@@ -26,10 +26,13 @@ desenvolvimento dentro do Docker.
 ├── src/
 │   ├── app/
 │   │   ├── _layout.tsx       # Configuração geral das rotas
-│   │   ├── index.tsx         # Landing, rota /
+│   │   ├── index.tsx         # Redireciona p/ /tabs/home ou /login
 │   │   ├── login.tsx         # Tela de login, rota /login (Firebase Auth)
 │   │   ├── signup.tsx        # Tela de cadastro, rota /signup (Firebase Auth)
-│   │   └── home.tsx          # Dashboard, rota /home
+│   │   └── tabs/
+│   │       ├── _layout.tsx   # Abas Início e Alertas
+│   │       ├── home.tsx      # Risco real do bairro (Firestore)
+│   │       └── alertas.tsx   # Risco, bairro e preferências de notificação
 │   ├── components/
 │   │   ├── button.tsx        # Botão reutilizável (variantes primary/white)
 │   │   ├── input.tsx         # Campo de texto reutilizável (prop error)
@@ -37,11 +40,17 @@ desenvolvimento dentro do Docker.
 │   ├── contexts/
 │   │   ├── authContext.tsx   # Store global do Zustand (campos dos formulários)
 │   │   └── sessionContext.tsx # Sessão do Firebase: restaura login salvo, `logout`
+│   ├── hooks/
+│   │   └── useScoreBairro.ts # Carrega scores/{slug} do Firestore
 │   ├── lib/
+│   │   ├── bairros.ts        # Lista oficial, normalização e slug do bairro
 │   │   ├── firebase.ts       # init do Firebase; exporta `auth` e `db`
-│   │   └── firebase-errors.ts # Códigos auth/* → mensagens amigáveis PT-BR
+│   │   ├── firebase-errors.ts # Códigos auth/* → mensagens amigáveis PT-BR
+│   │   └── risco.ts          # Níveis, cores e textos do risco
+│   ├── services/
+│   │   └── scores.ts         # Leitura tipada de scores/{slug}
 │   ├── data/
-│   │   └── bairros.ts        # Lista de bairros (uso futuro)
+│   │   └── bairros.ts        # 94 bairros oficiais (gerado pelo pipeline)
 │   ├── backend/
 │   │   ├── types.ts          # Contratos de auth (uso futuro)
 │   │   ├── auth.repository.ts # Interface p/ camadas futuras de persistência
@@ -56,7 +65,8 @@ desenvolvimento dentro do Docker.
 │   ├── bairros-risco.md     # Relatório de risco por bairro (gerado)
 │   └── plano-integracao-ml.md # Plano de integração do ML
 ├── scripts/
-│   └── start-docker.ps1     # Detecta o IP e inicia o Docker (-Fresh, -HostIp)
+│   ├── start-docker.ps1     # Detecta o IP e inicia o Docker (-Fresh, -HostIp)
+│   └── sync-firebase.mjs    # Envia bairros/scores para o Firestore (Admin REST)
 ├── metro.config.js           # Metro + watcher.healthCheck p/ Docker Windows
 ├── Dockerfile                # Imagem de desenvolvimento
 ├── docker-compose.yml        # Serviço do Expo
@@ -79,19 +89,11 @@ telas encontradas em `src/app` em uma pilha de navegação.
 `headerShown: false` remove o cabeçalho padrão do Expo Router. As telas ficam
 responsáveis pelo próprio conteúdo visual.
 
-### `src/app/index.tsx`: landing page
+### `src/app/index.tsx`: redirecionamento inicial
 
-Esse arquivo representa a rota `/`, que é a primeira tela do aplicativo.
-
-O fundo é um gradiente azul-claro (`LinearGradient` de `#2F6BFF` para
-`#CFE4FA`, pacote `expo-linear-gradient`). Sobre ele ficam:
-
-- `LogoPlaceholder`: exibe a logo oficial (`src/assets/logo.png`) dentro de
-  um card branco com sombra, para a logo azul não misturar com o fundo.
-- Título `AlertaChuva` junto: `Alerta` em branco e `Chuva` em azul.
-- Tagline `Informação para você se proteger da chuva` e cidade `Recife`.
-- Botão branco `Começar` (`<Button label="Começar" variant="white" />`),
-  que navega com `router.push("/login")`.
+A rota `/` redireciona para `/tabs/home` quando há sessão restaurada ou para
+`/login` quando não há. A landing page antiga foi removida; as abas Início e
+Alertas ficam em `src/app/tabs/`.
 
 ### `src/app/login.tsx`: tela de login
 
@@ -111,7 +113,7 @@ instância `auth` de `@/lib/firebase`):
 2. Com email/senha inválidos, exibe `Usuário ou senha inválidos.`
    (mensagem genérica de propósito, sem expor o motivo).
 3. Com credenciais válidas, exibe o alerta de sucesso e
-   `router.replace("/home")`.
+   `router.replace("/tabs/home")`.
 
 Em qualquer falha, `hasError` vira `true` e os campos recebem
 `error={hasError}`, mostrando a borda vermelha. Ao digitar, o erro limpa.
@@ -214,7 +216,7 @@ traduzidos por `getFriendlyAuthErrorMessage` (`src/lib/firebase-errors.ts`):
 - `auth/network-request-failed` → `Sem conexão. Verifique a internet e tente de novo.`
 
 Com sucesso, o aplicativo mostra o alerta `Usuário cadastrado com sucesso!`
-e, após o toque em `OK`, executa `router.replace("/home")`.
+e, após o toque em `OK`, o guard de sessão leva para `/tabs/home`.
 
 #### Link `Entre aqui`
 
@@ -226,19 +228,21 @@ e, após o toque em `OK`, executa `router.replace("/home")`.
 
 Esse link retorna para a tela de login.
 
-### `src/app/home.tsx`: dashboard
+### `src/app/tabs/home.tsx`: dashboard
 
-Essa é a rota `/home`, acessada após login ou cadastro válido. Dashboard no
-estilo Climatempo (ícones `Ionicons` de `@expo/vector-icons`): cabeçalho com
-saudação + localização (`Recife, PE`), card principal com condição atual
-(temperatura, status, aviso), card de alerta de chuva forte, previsão das
-próximas horas (scroll horizontal), grade de condições (umidade, vento,
-temperatura, pressão) e `Sair da conta`, que chama `logout()` de
-`useSession` (`signOut` do Firebase); ao zerar a sessão, o router leva para
-`/login` automaticamente.
+Essa é a rota `/tabs/home`, acessada após login ou cadastro válido. O app lê
+o bairro do perfil em `users/{uid}` e o risco em `scores/{slug}` (Firestore) e
+mostra:
 
-Os valores exibidos ainda são mockados no código — falta plugar previsão e
-alertas reais (Firebase/API).
+- nível de risco histórico (alto/médio/baixo/sem histórico), score 0–100,
+  ocorrências e elevação do bairro;
+- dados de atualização e a fonte dos dados;
+- aviso de que a previsão de chuva (ML) ainda está em desenvolvimento;
+- `Sair da conta`, que chama `logout()` de `useSession`.
+
+Bairros sem ocorrências são exibidos como **sem histórico** — o app não
+inventa um nível de risco para eles. A previsão meteorológica mockada foi
+removida.
 
 ### `src/components/input.tsx`: componente `Input`
 
@@ -292,10 +296,10 @@ quando o botão é pressionado.
 
 Atualmente os botões usados são:
 
-- **Começar** (landing, variante branca): navega para `/login`.
 - **Entrar**: chama `handleSignIn` da tela de login.
 - **Cadastrar**: chama `handleSignUp` da tela de cadastro.
-- **Sair** (home): encerra a sessão (`logout`) e volta ao login.
+- **Selecionar bairro** (Alertas): abre o modal com os 94 bairros oficiais.
+- **Sair** (Início): encerra a sessão (`logout`) e volta ao login.
 
 ### Login persistente: `sessionContext.tsx` e `_layout.tsx`
 
@@ -377,18 +381,31 @@ Scripts (rodar na ordem, ver `src/backend/pipeline/README.md`):
 - `coletar_defesacivil.py`: Defesa Civil PE (RSS + site) → `bruto_defesacivil.jsonl`
 - `enriquecer_artigos.py`: baixa o corpo das matérias (decodifica links do
   Google News) → `corpos.jsonl`
-- `extrair_bairros.py`: unifica tudo e identifica o bairro por match com
-  `data/bairros_recife.csv` → `ocorrencias.csv`
+- `extrair_bairros.py`: unifica tudo e identifica o bairro por match com a
+  lista oficial de 94 bairros (`data/bairros_recife.csv`) → `ocorrencias.csv`.
+  O bairro "Recife" só é marcado quando o texto fala "Recife Antigo", para não
+  confundir com a cidade.
 - `enriquecer_geo.py`: geocodifica bairros (Nominatim) e busca elevação
   (Open-Meteo) → `bairros_geo.csv`
 - `score_risco.py`: frequência ponderada (fonte oficial 2×, recência) +
-  elevação invertida → `score_bairro.csv` (score 0–100, nível baixo/médio/alto)
+  elevação invertida → `score_bairro.csv` (score 0–100, nível
+  baixo/médio/alto e `sem_historico` para bairros sem ocorrências)
 - `resumo.py`: ranking de bairros, contagens por fonte e ano
 - `gerar_relatorio.py`: gera `docs/bairros-risco.md` (tabela, fontes, método)
+- `gerar_lista_bairros.py`: gera `src/data/bairros.ts` a partir do CSV oficial
+
+Sync com o Firestore (service account fora do repo):
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "$env:USERPROFILE\.secrets\dsi-ufrpe-58db3-admin.json"
+node scripts/sync-firebase.mjs            # dry-run
+node scripts/sync-firebase.mjs --apply    # grava /bairros e /scores
+```
 
 Métrica de alerta prevista: usuário cadastra endereço → bairro pelo centróide
 mais próximo em `bairros_geo.csv` → se o ML prever chuva ≥ limiar e o
-`score_risco` for alto, o app envia alerta de alagamento.
+`score_risco` for alto, o app envia alerta de alagamento. **A previsão de
+chuva ainda não está integrada**; hoje o app mostra apenas o risco histórico.
 
 Setup: `cd src/backend/pipeline && py -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`.
 
@@ -405,13 +422,13 @@ Setup: `cd src/backend/pipeline && py -m venv .venv && .venv\Scripts\activate &&
 
 ### Imagens em `src/assets`
 
-- `logo.png`: logo oficial, usada na landing via `LogoPlaceholder`.
+- `logo.png`: logo oficial, usada pelo componente `LogoPlaceholder` (a landing antiga foi removida).
 - `img1.png`: ilustração usada na tela de login.
 - `img2.png`: ilustração usada na tela de cadastro.
 
 As imagens são carregadas com `require` e exibidas pelo componente `Image`.
 `img1/img2` têm fundo branco chapado, por isso login/cadastro usam fundo
-`#FFFFFF`; a home (sem imagens) usa `#F2F6FF` para contraste dos cards.
+`#FFFFFF`; a home (sem imagens) usa `#F8FAFC` para contraste dos cards.
 
 ### Layout e teclado
 
@@ -428,23 +445,29 @@ espaçamentos e alinhamentos separados da estrutura JSX.
 
 ## Fluxo completo de interação
 
-1. O aplicativo inicia na landing `/`, com logo, nome e botão **Começar**.
-2. Ao tocar em **Começar**, o usuário vai para `/login`.
-3. No login, preenche email e senha e toca em **Entrar**.
-4. Com credenciais válidas no Firebase, aparece o alerta de sucesso; em
-   **OK**, vai para `/home`. Com erro, os campos ficam com borda vermelha.
-5. Se não tem conta, toca em **Cadastre-se** e vai para `/signup`.
-6. No cadastro, email e senha vão para o Zustand; a confirmação é local.
-7. Com dados válidos, a conta é criada no Firebase, alerta de sucesso e
-   **OK** leva para `/home`. Senha curta mostra
-   `Senha fraca: use pelo menos 6 caracteres.`
+1. O aplicativo inicia em `/`, que redireciona para `/tabs/home` (sessão
+   restaurada) ou `/login`.
+2. No login, o usuário preenche email e senha e toca em **Entrar**. Com erro,
+   os campos ficam com borda vermelha.
+3. Sem conta, o usuário toca em **Cadastre-se** e escolhe o bairro no cadastro.
+   A conta é criada no Firebase Auth e o perfil (`users/{uid}`) é salvo no
+   Firestore com `createdAt`.
+4. Na aba **Alertas**, o usuário pode trocar o bairro e ativar/desativar as
+   preferências de notificação.
+5. A aba **Início** lê `scores/{slug}` e mostra o risco histórico do bairro.
+   Sem histórico, exibe "sem histórico" em vez de inventar um nível.
+6. A previsão de chuva (ML) ainda não está integrada; ela será combinada com
+   o risco do bairro em uma fase futura.
 
 ## Limitações atuais
 
 - A config do Firebase está hardcoded em `src/lib/firebase.ts` (mover para
   `.env` com `EXPO_PUBLIC_*`).
-- O Firestore (`db`) está instanciado, mas nenhuma coleção é usada ainda.
-- A home exibe valores mockados (falta plugar previsão e alertas reais).
+- O app usa `users/{uid}` (perfil) e lê `scores/{slug}`/`bairros/{slug}`
+  (somente leitura autenticada). A escrita nessas coleções é feita pelo
+  `scripts/sync-firebase.mjs` com Admin SDK.
+- A previsão de chuva (modelo de ML) ainda não está integrada; o app exibe o
+  risco histórico do bairro e um aviso de integração em desenvolvimento.
 - A senha fica apenas em memória enquanto o aplicativo está aberto.
 
 ## Arquivos de configuração

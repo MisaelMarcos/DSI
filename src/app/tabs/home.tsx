@@ -1,11 +1,85 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { doc, getDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useSession } from "@/contexts/sessionContext";
+import { useScoreBairro } from "@/hooks/useScoreBairro";
+import { normalizarBairroOficial } from "@/lib/bairros";
+import { db } from "@/lib/firebase";
+import {
+  formatarData,
+  formatarScore,
+  RISCO_INFO,
+  type NivelRisco,
+} from "@/lib/risco";
+
+const ICONE_POR_NIVEL: Record<
+  NivelRisco,
+  keyof typeof Ionicons.glyphMap
+> = {
+  alto: "warning",
+  medio: "alert-circle",
+  baixo: "shield-checkmark",
+  sem_historico: "information-circle",
+};
 
 export default function Home() {
-  const { logout } = useSession();
+  const { user, logout } = useSession();
+  const [bairro, setBairro] = useState("");
+  const [carregandoPerfil, setCarregandoPerfil] = useState(true);
+
+  useEffect(() => {
+    let ativo = true;
+
+    if (!user) {
+      setBairro("");
+      setCarregandoPerfil(false);
+      return;
+    }
+
+    setCarregandoPerfil(true);
+
+    getDoc(doc(db, "users", user.uid))
+      .then((snap) => {
+        if (!ativo) return;
+
+        const salvo = snap.exists() ? snap.data().bairro : "";
+        setBairro(
+          normalizarBairroOficial(
+            typeof salvo === "string" ? salvo : "",
+          ),
+        );
+      })
+      .catch((erro) => {
+        console.error("Erro ao carregar perfil:", erro);
+        if (ativo) setBairro("");
+      })
+      .finally(() => {
+        if (ativo) setCarregandoPerfil(false);
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [user]);
+
+  const {
+    score,
+    carregando: carregandoScore,
+    erro: erroScore,
+  } = useScoreBairro(bairro);
+
+  const carregando = carregandoPerfil || (!!bairro && carregandoScore);
+  const nivel = score?.nivel ?? "sem_historico";
+  const info = RISCO_INFO[nivel];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -26,265 +100,237 @@ export default function Home() {
               />
 
               <Text style={styles.location}>
-                Recife, PE
+                {bairro || "Recife, PE"}
               </Text>
             </View>
           </View>
 
           <View style={styles.updateContainer}>
             <Ionicons
-              name="refresh-outline"
+              name="leaf-outline"
               size={16}
               color="#64748B"
             />
 
             <Text style={styles.timestamp}>
-              Agora
+              Risco histórico
             </Text>
           </View>
         </View>
 
         {/* CARD PRINCIPAL */}
-        <View style={styles.heroCard}>
+        <View
+          style={[
+            styles.heroCard,
+            { backgroundColor: info.fundo, borderColor: info.borda },
+          ]}
+        >
           <View style={styles.heroTop}>
-            <View>
-              <Text style={styles.heroLabel}>
-                Condição atual
+            <View style={styles.heroTexto}>
+              <Text style={styles.heroLabel}>RISCO DE ALAGAMENTO</Text>
+
+              <Text style={[styles.heroNivel, { color: info.cor }]}>
+                {carregando
+                  ? "Carregando..."
+                  : !bairro
+                    ? "Selecione seu bairro"
+                    : erroScore
+                      ? "Dados indisponíveis"
+                      : info.rotulo}
               </Text>
 
-              <Text style={styles.heroTemp}>
-                28°
+              <Text style={styles.heroBairro}>
+                {bairro || "Nenhum bairro selecionado"}
               </Text>
             </View>
 
-            <View style={styles.weatherIcon}>
+            <View
+              style={[
+                styles.heroIcone,
+                { backgroundColor: info.borda },
+              ]}
+            >
               <Ionicons
-                name="rainy-outline"
-                size={70}
-                color="#2F6BFF"
+                name={ICONE_POR_NIVEL[nivel]}
+                size={42}
+                color={info.cor}
               />
             </View>
           </View>
 
-          <Text style={styles.heroStatus}>
-            Pancadas de chuva moderadas
-          </Text>
-
-          <View style={styles.riskContainer}>
-            <Ionicons
-              name="information-circle-outline"
-              size={20}
-              color="#2F6BFF"
+          {carregando ? (
+            <ActivityIndicator
+              color={info.cor}
+              style={styles.heroLoading}
             />
-
-            <Text style={styles.riskText}>
-              Possibilidade de chuva nas próximas horas
+          ) : !bairro ? (
+            <Text style={styles.heroDescricao}>
+              Vá até a aba Alertas e selecione seu bairro para ver o
+              risco de alagamento.
             </Text>
-          </View>
+          ) : erroScore ? (
+            <Text style={styles.heroDescricao}>
+              Não foi possível carregar os dados deste bairro. Verifique
+              sua conexão e tente novamente.
+            </Text>
+          ) : (
+            <>
+              {score?.temHistorico && (
+                <View style={styles.scoreLinha}>
+                  <Text
+                    style={[styles.scoreValor, { color: info.cor }]}
+                  >
+                    {formatarScore(score.scoreRisco)}
+                  </Text>
+                  <Text style={styles.scoreMax}>/100</Text>
+                </View>
+              )}
+
+              <Text style={styles.heroDescricao}>{info.descricao}</Text>
+            </>
+          )}
         </View>
 
-        {/* ALERTA */}
-        <View style={styles.alertCard}>
-          <View style={styles.alertIcon}>
-            <Ionicons
-              name="warning"
-              size={24}
-              color="#DC2626"
-            />
-          </View>
-
-          <View style={styles.alertContent}>
-            <Text style={styles.alertTitle}>
-              Atenção para chuva forte
-            </Text>
-
-            <Text style={styles.alertDescription}>
-              Há previsão de aumento da intensidade da chuva
-              nas próximas 2 horas.
-            </Text>
-          </View>
-        </View>
-
-        {/* PRÓXIMAS HORAS */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Previsão para as próximas horas
-          </Text>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.hourlyContainer}
+        {/* ALERTA DINÂMICO */}
+        {score && !carregando && (
+          <View
+            style={[
+              styles.alertCard,
+              {
+                backgroundColor: info.fundo,
+                borderColor: info.borda,
+              },
+            ]}
           >
-            <View style={styles.hourCard}>
-              <Text style={styles.hour}>18h</Text>
-
+            <View
+              style={[
+                styles.alertIcon,
+                { backgroundColor: info.borda },
+              ]}
+            >
               <Ionicons
-                name="rainy-outline"
-                size={28}
-                color="#2F6BFF"
+                name={ICONE_POR_NIVEL[nivel]}
+                size={24}
+                color={info.cor}
               />
-
-              <Text style={styles.hourTemp}>28°</Text>
-
-              <Text style={styles.hourRain}>
-                4,2 mm
-              </Text>
             </View>
 
-            <View style={styles.hourCard}>
-              <Text style={styles.hour}>19h</Text>
+            <View style={styles.alertContent}>
+              <Text style={[styles.alertTitle, { color: info.cor }]}>
+                {info.titulo}
+              </Text>
 
-              <Ionicons
-                name="rainy-outline"
-                size={28}
-                color="#2F6BFF"
-              />
-
-              <Text style={styles.hourTemp}>27°</Text>
-
-              <Text style={styles.hourRain}>
-                7,8 mm
+              <Text style={styles.alertDescription}>
+                {score.temHistorico
+                  ? `${score.ocorrencias} ocorrência(s) registrada(s) no histórico do bairro.`
+                  : "Este bairro ainda não aparece nas ocorrências coletadas. A elevação é considerada, mas não há histórico para classificar o risco."}
               </Text>
             </View>
+          </View>
+        )}
 
-            <View style={styles.hourCardAlert}>
-              <Text style={styles.hour}>20h</Text>
-
-              <Ionicons
-                name="thunderstorm-outline"
-                size={28}
-                color="#DC2626"
-              />
-
-              <Text style={styles.hourTemp}>26°</Text>
-
-              <Text style={styles.hourRainAlert}>
-                12,5 mm
-              </Text>
-            </View>
-
-            <View style={styles.hourCard}>
-              <Text style={styles.hour}>21h</Text>
-
-              <Ionicons
-                name="rainy-outline"
-                size={28}
-                color="#2F6BFF"
-              />
-
-              <Text style={styles.hourTemp}>26°</Text>
-
-              <Text style={styles.hourRain}>
-                6,1 mm
-              </Text>
-            </View>
-
-            <View style={styles.hourCard}>
-              <Text style={styles.hour}>22h</Text>
-
-              <Ionicons
-                name="cloud-outline"
-                size={28}
-                color="#64748B"
-              />
-
-              <Text style={styles.hourTemp}>25°</Text>
-
-              <Text style={styles.hourRain}>
-                2,0 mm
-              </Text>
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* INFORMAÇÕES METEOROLÓGICAS */}
+        {/* DADOS DO BAIRRO */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Condições meteorológicas
-          </Text>
+          <Text style={styles.sectionTitle}>Dados do bairro</Text>
 
           <View style={styles.infoGrid}>
+            <InfoCard
+              icone="document-text-outline"
+              titulo="Ocorrências"
+              valor={score ? String(score.ocorrencias) : "—"}
+            />
 
-            <View style={styles.infoCard}>
-              <Ionicons
-                name="water-outline"
-                size={24}
-                color="#2F6BFF"
-              />
+            <InfoCard
+              icone="trending-down-outline"
+              titulo="Elevação"
+              valor={
+                score?.elevacaoM != null
+                  ? `${Math.round(score.elevacaoM)} m`
+                  : "—"
+              }
+            />
 
-              <Text style={styles.infoTitle}>
-                Umidade
-              </Text>
+            <InfoCard
+              icone="analytics-outline"
+              titulo="Score histórico"
+              valor={
+                score?.temHistorico
+                  ? `${formatarScore(score.scoreRisco)}/100`
+                  : "—"
+              }
+            />
 
-              <Text style={styles.infoValue}>
-                82%
-              </Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <Ionicons
-                name="speedometer-outline"
-                size={24}
-                color="#2F6BFF"
-              />
-
-              <Text style={styles.infoTitle}>
-                Vento
-              </Text>
-
-              <Text style={styles.infoValue}>
-                4,8 m/s
-              </Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <Ionicons
-                name="thermometer-outline"
-                size={24}
-                color="#2F6BFF"
-              />
-
-              <Text style={styles.infoTitle}>
-                Temperatura
-              </Text>
-
-              <Text style={styles.infoValue}>
-                28°C
-              </Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <Ionicons
-                name="analytics-outline"
-                size={24}
-                color="#2F6BFF"
-              />
-
-              <Text style={styles.infoTitle}>
-                Pressão
-              </Text>
-
-              <Text style={styles.infoValue}>
-                1012 mB
-              </Text>
-            </View>
-
+            <InfoCard
+              icone="calendar-outline"
+              titulo="Atualizado"
+              valor={
+                score?.atualizadoEm
+                  ? formatarData(score.atualizadoEm)
+                  : "—"
+              }
+            />
           </View>
         </View>
+
+        {/* PREVISÃO DE CHUVA */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Previsão de chuva</Text>
+
+          <View style={styles.previsaoCard}>
+            <View style={styles.previsaoIcone}>
+              <Ionicons
+                name="cloud-outline"
+                size={26}
+                color="#2F6BFF"
+              />
+            </View>
+
+            <View style={styles.previsaoTexto}>
+              <Text style={styles.previsaoTitulo}>
+                Integração em desenvolvimento
+              </Text>
+
+              <Text style={styles.previsaoDescricao}>
+                A previsão de chuva com o modelo de machine learning
+                ainda não está disponível. Por enquanto, exibimos o
+                risco histórico de alagamento do seu bairro.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.fonte}>
+          Fonte: notícias e alertas oficiais coletados pelo pipeline do
+          projeto. O risco é histórico e não substitui os avisos da
+          Defesa Civil.
+        </Text>
 
         {/* SAIR */}
         <View style={styles.logoutContainer}>
-          <Text
-            style={styles.logout}
-            onPress={logout}
-          >
+          <Text style={styles.logout} onPress={logout}>
             Sair da conta
           </Text>
         </View>
-
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function InfoCard({
+  icone,
+  titulo,
+  valor,
+}: {
+  icone: keyof typeof Ionicons.glyphMap;
+  titulo: string;
+  valor: string;
+}) {
+  return (
+    <View style={styles.infoCard}>
+      <Ionicons name={icone} size={24} color="#2F6BFF" />
+      <Text style={styles.infoTitle}>{titulo}</Text>
+      <Text style={styles.infoValue}>{valor}</Text>
+    </View>
   );
 }
 
@@ -336,11 +382,9 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
     marginBottom: 16,
   },
 
@@ -348,59 +392,79 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
+  },
+
+  heroTexto: {
+    flex: 1,
   },
 
   heroLabel: {
-    fontSize: 14,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.1,
     color: "#64748B",
-    marginBottom: 4,
+    marginBottom: 6,
   },
 
-  heroTemp: {
-    fontSize: 64,
+  heroNivel: {
+    fontSize: 26,
     fontWeight: "900",
-    color: "#0F172A",
+    lineHeight: 32,
   },
 
-  weatherIcon: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "#EFF6FF",
+  heroBairro: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#475569",
+    marginTop: 4,
+  },
+
+  heroIcone: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     justifyContent: "center",
     alignItems: "center",
   },
 
-  heroStatus: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#0F172A",
-    marginTop: 4,
+  heroLoading: {
+    marginTop: 20,
+    alignSelf: "flex-start",
   },
 
-  riskContainer: {
+  scoreLinha: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    alignItems: "flex-end",
+    marginTop: 14,
+    gap: 4,
   },
 
-  riskText: {
-    flex: 1,
-    fontSize: 13,
+  scoreValor: {
+    fontSize: 52,
+    fontWeight: "900",
+    lineHeight: 56,
+  },
+
+  scoreMax: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#64748B",
+    marginBottom: 8,
+  },
+
+  heroDescricao: {
+    fontSize: 14,
+    lineHeight: 21,
     color: "#475569",
+    marginTop: 14,
   },
 
   alertCard: {
     flexDirection: "row",
-    backgroundColor: "#FEF2F2",
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#FECACA",
     marginBottom: 24,
   },
 
@@ -408,7 +472,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -421,14 +484,13 @@ const styles = StyleSheet.create({
   alertTitle: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#991B1B",
     marginBottom: 4,
   },
 
   alertDescription: {
     fontSize: 13,
     lineHeight: 19,
-    color: "#7F1D1D",
+    color: "#475569",
   },
 
   section: {
@@ -440,56 +502,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0F172A",
     marginBottom: 12,
-  },
-
-  hourlyContainer: {
-    gap: 10,
-  },
-
-  hourCard: {
-    width: 80,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 8,
-  },
-
-  hourCardAlert: {
-    width: 80,
-    backgroundColor: "#FEF2F2",
-    borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-    gap: 8,
-  },
-
-  hour: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#475569",
-  },
-
-  hourTemp: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-
-  hourRain: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#2F6BFF",
-  },
-
-  hourRainAlert: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#DC2626",
   },
 
   infoGrid: {
@@ -518,6 +530,48 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0F172A",
     marginTop: 2,
+  },
+
+  previsaoCard: {
+    flexDirection: "row",
+    backgroundColor: "#EAF2FF",
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+    alignItems: "flex-start",
+  },
+
+  previsaoIcone: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#D8E6FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  previsaoTexto: {
+    flex: 1,
+  },
+
+  previsaoTitulo: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1E40AF",
+  },
+
+  previsaoDescricao: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: "#365987",
+    marginTop: 5,
+  },
+
+  fonte: {
+    fontSize: 11,
+    lineHeight: 17,
+    color: "#94A3B8",
+    marginBottom: 8,
   },
 
   logoutContainer: {

@@ -11,10 +11,19 @@ import {
   getDoc,
   setDoc,
 } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { bairrosRecife } from "@/data/bairros";
+import { useScoreBairro } from "@/hooks/useScoreBairro";
+import { normalizarBairroOficial } from "@/lib/bairros";
 import { auth, db } from "@/lib/firebase";
+import {
+  formatarData,
+  formatarScore,
+  RISCO_INFO,
+  type NivelRisco,
+} from "@/lib/risco";
+import type { ScoreBairro } from "@/services/scores";
 
 import {
   ActivityIndicator,
@@ -30,19 +39,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type CategoriaAlerta = "chuva" | "desastre";
-type NivelRisco = "Moderado" | "Alto" | "Muito alto";
-
-type Alerta = {
-  id: string;
-  bairro: string;
-  titulo: string;
-  descricao: string;
-  categoria: CategoriaAlerta;
-  nivel: NivelRisco;
-  horario: string;
-  icone: keyof typeof Ionicons.glyphMap;
+const ICONE_POR_NIVEL: Record<
+  NivelRisco,
+  keyof typeof Ionicons.glyphMap
+> = {
+  alto: "warning",
+  medio: "alert-circle",
+  baixo: "shield-checkmark",
+  sem_historico: "information-circle",
 };
+
+type CategoriaNotificacao = "chuva" | "desastre";
 
 const CORES = {
   azul: "#3366FF",
@@ -57,67 +64,6 @@ const CORES = {
   vermelho: "#D93636",
 };
 
-function obterNivel(indice: number): NivelRisco {
-  const niveis: NivelRisco[] = ["Moderado", "Alto", "Muito alto"];
-  return niveis[indice % niveis.length];
-}
-
-function criarAlertas(bairro: string): Alerta[] {
-  const indice = Math.max(
-    0,
-    bairrosRecife.findIndex((item) => item === bairro)
-  );
-
-  return [
-    {
-      id: `${bairro}-chuva`,
-      bairro,
-      titulo: "Chuva forte",
-      descricao:
-        "Fique atento à intensidade da chuva e evite áreas com histórico de alagamento.",
-      categoria: "chuva",
-      nivel: obterNivel(indice + 1),
-      horario: "Atenção meteorológica",
-      icone: "rainy-outline",
-    },
-    {
-      id: `${bairro}-desastre`,
-      bairro,
-      titulo: "Alagamentos e deslizamentos",
-      descricao:
-        "Evite ruas alagadas e fique atento a sinais de movimentação de terra em áreas de encosta.",
-      categoria: "desastre",
-      nivel: obterNivel(indice + 2),
-      horario: "Atenção à segurança",
-      icone: "warning-outline",
-    },
-  ];
-}
-
-function coresDoRisco(nivel: NivelRisco) {
-  if (nivel === "Muito alto") {
-    return {
-      fundo: "#FFF0F0",
-      texto: "#C62828",
-      ponto: "#E53935",
-    };
-  }
-
-  if (nivel === "Alto") {
-    return {
-      fundo: "#FFF4E5",
-      texto: "#B45309",
-      ponto: "#F59E0B",
-    };
-  }
-
-  return {
-    fundo: "#EAF7F0",
-    texto: "#18794E",
-    ponto: "#22A06B",
-  };
-}
-
 export default function Alertas() {
   const [usuario, setUsuario] = useState<User | null>(null);
   const [bairro, setBairro] = useState("");
@@ -127,12 +73,13 @@ export default function Alertas() {
   const [notificarChuva, setNotificarChuva] = useState(false);
   const [notificarDesastres, setNotificarDesastres] = useState(false);
   const [salvandoPreferencia, setSalvandoPreferencia] =
-    useState<CategoriaAlerta | null>(null);
+    useState<CategoriaNotificacao | null>(null);
 
-  const alertas = useMemo(
-    () => (bairro ? criarAlertas(bairro) : []),
-    [bairro]
-  );
+  const {
+    score,
+    carregando: carregandoScore,
+    erro: erroScore,
+  } = useScoreBairro(bairro);
 
   useEffect(() => {
     const cancelar = onAuthStateChanged(auth, async (usuarioAtual) => {
@@ -155,11 +102,8 @@ export default function Alertas() {
           const dados = perfilSnap.data();
           const bairroPerfil = dados.bairro;
 
-          if (
-            typeof bairroPerfil === "string" &&
-            bairrosRecife.includes(bairroPerfil)
-          ) {
-            bairroSalvo = bairroPerfil;
+          if (typeof bairroPerfil === "string") {
+            bairroSalvo = normalizarBairroOficial(bairroPerfil);
           }
         }
 
@@ -196,8 +140,18 @@ export default function Alertas() {
       return;
     }
 
+    const bairroOficial = normalizarBairroOficial(novoBairro);
+
+    if (!bairroOficial) {
+      Alert.alert(
+        "Bairro não reconhecido",
+        "Selecione um dos bairros oficiais do Recife."
+      );
+      return;
+    }
+
     try {
-      setBairro(novoBairro);
+      setBairro(bairroOficial);
       setModalBairro(false);
 
       const perfilRef = doc(db, "users", usuario.uid);
@@ -212,7 +166,7 @@ export default function Alertas() {
         {
           uid: usuario.uid,
           email: usuario.email ?? "",
-          bairro: novoBairro,
+          bairro: bairroOficial,
           updatedAt: agora,
           ...(perfilSnap.exists() ? {} : { createdAt: agora }),
         },
@@ -221,7 +175,7 @@ export default function Alertas() {
 
       Alert.alert(
         "Bairro atualizado",
-        `Os alertas exibidos agora são referentes a ${novoBairro}.`
+        `Os alertas exibidos agora são referentes a ${bairroOficial}.`
       );
     } catch (erro) {
       console.error("Erro ao salvar bairro:", erro);
@@ -234,7 +188,7 @@ export default function Alertas() {
   }
 
   async function alterarNotificacao(
-    categoria: CategoriaAlerta,
+    categoria: CategoriaNotificacao,
     ativar: boolean
   ) {
     if (!usuario) {
@@ -464,7 +418,7 @@ export default function Alertas() {
           </View>
         </View>
 
-        {/* Alertas do bairro */}
+        {/* Risco do bairro */}
         <View style={styles.secao}>
           <View style={styles.alertasTituloLinha}>
             <View style={styles.tituloLinha}>
@@ -477,13 +431,13 @@ export default function Alertas() {
               </View>
 
               <Text style={styles.secaoTitulo}>
-                Alertas do seu bairro
+                Risco do seu bairro
               </Text>
             </View>
 
             <View style={styles.quantidadeBadge}>
               <Text style={styles.quantidadeTexto}>
-                {alertas.length}
+                {!bairro ? 0 : score ? 1 : 0}
               </Text>
             </View>
           </View>
@@ -503,7 +457,8 @@ export default function Alertas() {
               </Text>
 
               <Text style={styles.vazioDescricao}>
-                Selecione seu bairro para visualizar os alertas.
+                Selecione seu bairro para visualizar o risco de
+                alagamento.
               </Text>
 
               <Pressable
@@ -515,10 +470,51 @@ export default function Alertas() {
                 </Text>
               </Pressable>
             </View>
+          ) : carregandoScore ? (
+            <View style={styles.estadoVazio}>
+              <ActivityIndicator size="large" color={CORES.azul} />
+              <Text style={styles.vazioDescricao}>
+                Carregando o risco do bairro...
+              </Text>
+            </View>
+          ) : erroScore ? (
+            <View style={styles.estadoVazio}>
+              <View style={styles.vazioIcone}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={32}
+                  color={CORES.azul}
+                />
+              </View>
+
+              <Text style={styles.vazioTitulo}>
+                Não foi possível carregar
+              </Text>
+
+              <Text style={styles.vazioDescricao}>
+                Verifique sua conexão e tente novamente.
+              </Text>
+            </View>
+          ) : score ? (
+            <CartaoRisco score={score} />
           ) : (
-            alertas.map((alerta) => (
-              <CartaoAlerta key={alerta.id} alerta={alerta} />
-            ))
+            <View style={styles.estadoVazio}>
+              <View style={styles.vazioIcone}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={32}
+                  color={CORES.azul}
+                />
+              </View>
+
+              <Text style={styles.vazioTitulo}>
+                Sem dados para este bairro
+              </Text>
+
+              <Text style={styles.vazioDescricao}>
+                Ainda não há score publicado para este bairro.
+              </Text>
+            </View>
           )}
         </View>
 
@@ -653,13 +649,8 @@ export default function Alertas() {
   );
 }
 
-function CartaoAlerta({ alerta }: { alerta: Alerta }) {
-  const risco = coresDoRisco(alerta.nivel);
-
-  const descricaoCategoria =
-    alerta.categoria === "chuva"
-      ? "CHUVA"
-      : "RISCO DE DESASTRE";
+function CartaoRisco({ score }: { score: ScoreBairro }) {
+  const info = RISCO_INFO[score.nivel];
 
   return (
     <View style={styles.alertaCard}>
@@ -667,73 +658,99 @@ function CartaoAlerta({ alerta }: { alerta: Alerta }) {
         <View
           style={[
             styles.alertaIcone,
-            {
-              backgroundColor: risco.fundo,
-            },
+            { backgroundColor: info.fundo },
           ]}
         >
           <Ionicons
-            name={alerta.icone}
+            name={ICONE_POR_NIVEL[score.nivel]}
             size={26}
-            color={risco.texto}
+            color={info.cor}
           />
         </View>
 
         <View style={styles.alertaTituloContainer}>
           <Text style={styles.alertaCategoria}>
-            {descricaoCategoria}
+            RISCO HISTÓRICO
           </Text>
-          <Text style={styles.alertaTitulo}>
-            {alerta.titulo}
-          </Text>
+          <Text style={styles.alertaTitulo}>{info.titulo}</Text>
         </View>
 
         <View
           style={[
             styles.pontoRisco,
-            { backgroundColor: risco.ponto },
+            { backgroundColor: info.cor },
           ]}
         />
       </View>
 
-      <Text style={styles.alertaDescricao}>
-        {alerta.descricao}
-      </Text>
+      <Text style={styles.alertaDescricao}>{info.descricao}</Text>
+
+      <View style={styles.dadosLinha}>
+        <View style={styles.dadoItem}>
+          <Ionicons
+            name="document-text-outline"
+            size={15}
+            color={CORES.secundario}
+          />
+          <Text style={styles.dadoTexto}>
+            {score.ocorrencias} ocorrência(s)
+          </Text>
+        </View>
+
+        <View style={styles.dadoItem}>
+          <Ionicons
+            name="trending-down-outline"
+            size={15}
+            color={CORES.secundario}
+          />
+          <Text style={styles.dadoTexto}>
+            Elevação{" "}
+            {score.elevacaoM != null
+              ? `${Math.round(score.elevacaoM)} m`
+              : "—"}
+          </Text>
+        </View>
+      </View>
 
       <View style={styles.alertaRodape}>
         <View
           style={[
             styles.riscoBadge,
-            { backgroundColor: risco.fundo },
+            { backgroundColor: info.fundo },
           ]}
         >
           <View
             style={[
               styles.riscoPonto,
-              { backgroundColor: risco.ponto },
+              { backgroundColor: info.cor },
             ]}
           />
           <Text
-            style={[
-              styles.riscoTexto,
-              { color: risco.texto },
-            ]}
+            style={[styles.riscoTexto, { color: info.cor }]}
           >
-            Risco {alerta.nivel.toLowerCase()}
+            {info.rotulo}
           </Text>
         </View>
 
-        <View style={styles.horarioContainer}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={15}
-            color={CORES.secundario}
-          />
-          <Text style={styles.horarioTexto}>
-            {alerta.horario}
-          </Text>
-        </View>
+        {score.temHistorico && (
+          <View style={styles.horarioContainer}>
+            <Ionicons
+              name="analytics-outline"
+              size={15}
+              color={CORES.secundario}
+            />
+            <Text style={styles.horarioTexto}>
+              Score {formatarScore(score.scoreRisco)}/100
+            </Text>
+          </View>
+        )}
       </View>
+
+      {score.atualizadoEm && (
+        <Text style={styles.atualizadoTexto}>
+          Dados atualizados em {formatarData(score.atualizadoEm)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -993,6 +1010,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     marginTop: 15,
+  },
+  dadosLinha: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    marginTop: 14,
+  },
+  dadoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  dadoTexto: {
+    color: CORES.secundario,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  atualizadoTexto: {
+    color: "#94A3B8",
+    fontSize: 10,
+    marginTop: 12,
   },
   alertaRodape: {
     flexDirection: "row",
