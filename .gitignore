@@ -41,6 +41,11 @@ yarn-error.*
 .env
 .env*.local
 
+# Firebase Admin credentials (nunca commitar)
+*firebase-adminsdk*.json
+serviceAccount*.json
+.secrets/
+
 # typescript
 *.tsbuildinfo
 
@@ -52,6 +57,6 @@ yarn-error.*
 __pycache__/
 .venv/
 
-# pipeline caches brutos (regeneráveis)
+# pipeline caches brutos (regenerï¿½veis)
 src/backend/pipeline/data/bruto_*.jsonl
 src/backend/pipeline/data/corpos.jsonl
