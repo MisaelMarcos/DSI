@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
+import { Link } from "expo-router";
 import { useState } from "react";
 
 import { Button } from "@/components/button";
@@ -116,7 +116,7 @@ export default function Signup() {
       setHasError(false);
       setMensagemErro("");
 
-      router.replace("/tabs/home");
+      // Sem router.replace: o cadastro já loga o usuário e o guard em _layout.tsx leva para /tabs/home.
     } catch (error: unknown) {
       const codigo =
         typeof error === "object" &&

@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useSession } from "@/contexts/sessionContext";
+
 export default function Home() {
+  const { logout } = useSession();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -274,7 +277,7 @@ export default function Home() {
         <View style={styles.logoutContainer}>
           <Text
             style={styles.logout}
-            onPress={() => router.replace("/")}
+            onPress={logout}
           >
             Sair da conta
           </Text>

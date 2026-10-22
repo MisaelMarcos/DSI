@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import {
+  type Auth,
   getAuth,
   // Exportado pelo build react-native (usado pelo Metro em runtime),
   // mas ausente nos builds web/node — por isso o guard abaixo.
@@ -22,17 +23,28 @@ const firebaseConfig = {
   measurementId: "G-EQFS4K2RJ2",
 };
 
-const app = initializeApp(firebaseConfig);
+// getApps/getApp evitam "duplicate-app" quando o Fast Refresh reavalia o módulo.
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
 // No React Native o Metro resolve `firebase/auth` para o build RN, que tem
 // `getReactNativePersistence` (persistência em AsyncStorage). No bundle web
 // (condição "browser") esse export NÃO existe e chamá-lo direto derrubava o
 // app com "(0, _firebaseAuth.getReactNativePersistence) is not a function".
 // O guard mantém a persistência no nativo e cai no getAuth() no web/node,
-// que usa a persistência padrão da plataforma.
-export const auth =
-  typeof getReactNativePersistence === "function"
-    ? initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage),
-      })
-    : getAuth(app);
+// que usa a persistência padrão da plataforma (IndexedDB/localStorage).
+function createAuth(): Auth {
+  if (typeof getReactNativePersistence !== "function") {
+    return getAuth(app);
+  }
+  try {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch {
+    // initializeAuth só pode rodar uma vez por app.
+    return getAuth(app);
+  }
+}
+
+export const auth = createAuth();
 export const db = getFirestore(app);
