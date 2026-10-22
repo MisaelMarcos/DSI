@@ -5,6 +5,8 @@ base `ocorrencias.csv` usada depois no score de risco e no ML.
 
 ## Setup
 
+Pré-requisitos: Python 3.10+ (testado com 3.14) e internet para os coletores.
+
 ```powershell
 py -m venv .venv
 .venv\Scripts\activate
@@ -25,6 +27,10 @@ py resumo.py               # ranking de bairros, fonte, ano
 py gerar_relatorio.py      # docs/bairros-risco.md
 py gerar_lista_bairros.py  # src/data/bairros.ts (lista usada pelo app)
 ```
+
+Os arquivos brutos (`bruto_*.jsonl` e `corpos.jsonl`) não são versionados.
+Em um clone novo, rode os coletores (com internet) antes de
+`extrair_bairros.py`.
 
 ## Lista canônica
 
@@ -61,13 +67,23 @@ não funciona no Python 3.14. Se o import falhar, edite
 - `bruto_*.jsonl` — registros crus de cada fonte
 - `ocorrencias.csv` — schema unificado: `data, bairro, titulo, fonte,
   fonte_tipo, url, severidade, descricao`
+- `bairros_geo.csv` — coordenadas e elevação por bairro
+- `score_bairro.csv` — score, nível e histórico por bairro
 - `ranking_bairros.csv` — contagem de ocorrências por bairro
 - `bairros_recife.csv` — lista canônica de bairros usada no match
 
 ## Sync com o Firestore
 
 O app lê `scores/{slug}` e `bairros/{slug}` (somente leitura autenticada).
-A escrita é feita com a service account do Firebase Admin:
+A escrita é feita com a service account do Firebase Admin.
+
+Pré-requisitos: Node.js 18+ e acesso ao projeto Firebase.
+
+1. No Firebase Console, abra **Project settings → Service accounts →
+   Firebase Admin SDK** e clique em **Generate new private key**.
+2. Salve o JSON **fora do repositório**, por exemplo em
+   `%USERPROFILE%\.secrets\dsi-ufrpe-58db3-admin.json`.
+3. Na raiz do projeto, execute:
 
 ```powershell
 $env:GOOGLE_APPLICATION_CREDENTIALS = "$env:USERPROFILE\.secrets\dsi-ufrpe-58db3-admin.json"
@@ -75,8 +91,16 @@ node scripts/sync-firebase.mjs            # dry-run
 node scripts/sync-firebase.mjs --apply    # grava
 ```
 
-A credencial fica **fora do repositório** e nunca deve ser commitada
-(`.gitignore` cobre `*firebase-adminsdk*.json` e `.secrets/`).
+O `--apply` grava 94 documentos em `scores` e 94 em `bairros`. A credencial
+fica **fora do repositório** e nunca deve ser commitada (`.gitignore` cobre
+`*firebase-adminsdk*.json` e `.secrets/`).
+
+Se estiver usando outro projeto Firebase, publique também `firestore.rules`
+no Console (Firestore → Rules) ou com o Firebase CLI autenticado:
+
+```powershell
+firebase deploy --only firestore:rules
+```
 
 ## Próximos passos
 

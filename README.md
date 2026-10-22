@@ -3,6 +3,94 @@
 Aplicativo React Native criado com Expo Router e executado em modo de
 desenvolvimento dentro do Docker.
 
+## Checklist de execução
+
+### 0. Obter o código (se ainda não tiver)
+
+```powershell
+git clone https://github.com/MisaelMarcos/DSI.git
+cd DSI
+```
+
+### 1. Rodar o app (Docker)
+
+Pré-requisitos: Node.js 18+ (para o `npm`), Docker Desktop aberto, Docker
+Compose, Expo Go no Android e celular na mesma rede Wi-Fi do computador.
+
+```powershell
+npm run docker
+```
+
+Escaneie o QR Code com o Expo Go. Se o IP detectado estiver errado:
+
+```powershell
+npm run docker -- -HostIp 192.168.1.100
+```
+
+Para rodar fora do Docker:
+
+```powershell
+npm install
+npx expo start --host lan
+```
+
+### 2. Rodar o pipeline (opcional)
+
+Pré-requisitos: Python 3.10+ (testado com 3.14) e internet para os coletores.
+
+```powershell
+cd src/backend/pipeline
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+py coletar_noticias.py
+py coletar_inmet.py
+py coletar_defesacivil.py
+py enriquecer_artigos.py
+py extrair_bairros.py
+py enriquecer_geo.py
+py score_risco.py
+py resumo.py
+py gerar_relatorio.py
+py gerar_lista_bairros.py
+```
+
+Os arquivos brutos (`bruto_*.jsonl` e `corpos.jsonl`) não são versionados.
+Em um clone novo, rode os coletores antes de `extrair_bairros.py`.
+
+### 3. Sincronizar com o Firestore (opcional)
+
+Pré-requisitos: Node.js 18+ e uma service account do Firebase Admin.
+
+1. No Firebase Console, abra **Project settings → Service accounts →
+   Firebase Admin SDK** e clique em **Generate new private key**.
+2. Salve o JSON **fora do repositório**, por exemplo em
+   `%USERPROFILE%\.secrets\dsi-ufrpe-58db3-admin.json`.
+3. Na raiz do projeto, execute:
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "$env:USERPROFILE\.secrets\dsi-ufrpe-58db3-admin.json"
+node scripts/sync-firebase.mjs
+node scripts/sync-firebase.mjs --apply
+```
+
+O primeiro comando é um dry-run; o segundo grava **94 documentos em `scores`
+e 94 em `bairros`**. Nunca commite o JSON da service account.
+
+### 4. Firebase e regras
+
+O app usa o projeto `dsi-ufrpe-58db3` com Auth (Email/senha) e Firestore.
+A configuração está em `src/lib/firebase.ts`. Para usar outro projeto, ajuste
+essa configuração e publique as regras (`firestore.rules`) no Console ou com
+o Firebase CLI autenticado:
+
+```powershell
+firebase deploy --only firestore:rules
+```
+
+No projeto já configurado, as regras e os dados de `scores`/`bairros` já estão
+publicados.
+
 ## Tecnologias utilizadas
 
 - **React Native**: criação das telas e dos elementos nativos do aplicativo.
@@ -13,10 +101,9 @@ desenvolvimento dentro do Docker.
 - **TypeScript**: tipagem dos componentes, propriedades e estado.
 - **Zustand**: armazenamento global dos dados de usuário e senha.
 - **expo-linear-gradient**: gradientes visuais (dependência mantida).
-- **Firebase (Auth integrado)**: login e cadastro por email/senha com
-  `signInWithEmailAndPassword` / `createUserWithEmailAndPassword`
-  (`src/lib/firebase.ts`). Instância do Firestore (`db`) exportada para uso
-  futuro. Pacote `firebase` instalado.
+- **Firebase (Auth + Firestore)**: login/cadastro por email/senha e dados do
+  app no Firestore (`users`, `scores` e `bairros`). Configuração em
+  `src/lib/firebase.ts`; pacote `firebase` instalado.
 - **Docker**: ambiente padronizado para executar o servidor do Expo.
 
 ## Estrutura do projeto
@@ -371,8 +458,8 @@ persistência no Firestore):
 
 Coleta e consolida ocorrências de alagamento em Recife para gerar o score de
 risco por bairro usado no alerta (chuva prevista alta + bairro propenso →
-alerta). A base fica em CSV local (`pipeline/data/`); Firebase entra depois
-como sync de leitura.
+alerta). A base fica em CSV local (`pipeline/data/`) e é sincronizada com o
+Firestore por `scripts/sync-firebase.mjs`; o app lê `scores` e `bairros`.
 
 Scripts (rodar na ordem, ver `src/backend/pipeline/README.md`):
 
@@ -394,13 +481,16 @@ Scripts (rodar na ordem, ver `src/backend/pipeline/README.md`):
 - `gerar_relatorio.py`: gera `docs/bairros-risco.md` (tabela, fontes, método)
 - `gerar_lista_bairros.py`: gera `src/data/bairros.ts` a partir do CSV oficial
 
-Sync com o Firestore (service account fora do repo):
+Sync com o Firestore (service account fora do repo; passo a passo no
+checklist acima):
 
 ```powershell
 $env:GOOGLE_APPLICATION_CREDENTIALS = "$env:USERPROFILE\.secrets\dsi-ufrpe-58db3-admin.json"
 node scripts/sync-firebase.mjs            # dry-run
 node scripts/sync-firebase.mjs --apply    # grava /bairros e /scores
 ```
+
+O `--apply` grava 94 documentos em `scores` e 94 em `bairros`.
 
 Métrica de alerta prevista: usuário cadastra endereço → bairro pelo centróide
 mais próximo em `bairros_geo.csv` → se o ML prever chuva ≥ limiar e o
@@ -568,16 +658,21 @@ fluxo `docker:fresh` (limpa caches do Metro e recria os containers):
 - `.dockerignore`: evita enviar `node_modules`, cache do Expo, arquivos nativos
   gerados e configurações locais para o contexto do Docker.
 - `.env.example`: mostra o formato da variável de IP para execução manual e
-  traz o bloco comentado `EXPO_PUBLIC_FIREBASE_*` (template para o backend).
+  traz o bloco comentado `EXPO_PUBLIC_FIREBASE_*` (template para uma migração
+  futura; a configuração atual está hardcoded em `src/lib/firebase.ts`).
 - `.gitignore`: impede que dependências, caches, arquivos `.env` e credenciais
   nativas sejam versionados (inclui `.metro-health-check*`).
 
 ## Pré-requisitos
 
+- Git (para clonar; opcional se o projeto já estiver na máquina).
+- Node.js 18+ (para o `npm` e para o sync).
 - Docker Desktop instalado e aberto.
 - Docker Compose disponível no Docker Desktop.
 - Android com o aplicativo Expo Go instalado.
 - Computador e celular conectados à mesma rede Wi-Fi.
+- Para o pipeline: Python 3.10+ (testado com 3.14).
+- Para publicar regras em outro projeto: Firebase CLI autenticado (opcional).
 
 ## Iniciar o projeto
 
