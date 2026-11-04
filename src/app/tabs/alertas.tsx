@@ -1,35 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { isRunningInExpoGo } from "expo";
-import { router } from "expo-router";
-import {
-  onAuthStateChanged,
-  type User,
-} from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  setDoc,
-} from "firebase/firestore";
-import { useEffect, useState } from "react";
-
-import { bairrosRecife } from "@/data/bairros";
-import { useScoreBairro } from "@/hooks/useScoreBairro";
-import { normalizarBairroOficial } from "@/lib/bairros";
-import { auth, db } from "@/lib/firebase";
-import {
-  formatarData,
-  formatarScore,
-  RISCO_INFO,
-  type NivelRisco,
-} from "@/lib/risco";
-import type { ScoreBairro } from "@/services/scores";
-
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -40,41 +13,36 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const ICONE_POR_NIVEL: Record<
-  NivelRisco,
-  keyof typeof Ionicons.glyphMap
-> = {
-  alto: "warning",
-  medio: "alert-circle",
-  baixo: "shield-checkmark",
-  sem_historico: "information-circle",
-};
-
-type CategoriaNotificacao = "chuva" | "desastre";
-
-const CORES = {
-  azul: "#3366FF",
-  azulEscuro: "#1D3FBF",
-  fundo: "#F4F7FC",
-  texto: "#172B4D",
-  secundario: "#6B7A90",
-  branco: "#FFFFFF",
-  borda: "#E5EAF2",
-  verde: "#16865C",
-  laranja: "#D97706",
-  vermelho: "#D93636",
-};
+import { SeletorBairroModal } from "@/components/seletor-bairro-modal";
+import { useBairroUsuario } from "@/hooks/useBairroUsuario";
+import { usePreferenciasNotificacao } from "@/hooks/useNotificacoesAlerta";
+import { usePrevisaoChuva } from "@/hooks/usePrevisaoChuva";
+import { useScoreBairro } from "@/hooks/useScoreBairro";
+import {
+  combinarPrevisaoERisco,
+  formatarData,
+  formatarDataHora,
+  formatarProbabilidade,
+  formatarScore,
+  RISCO_INFO,
+  type NivelRisco,
+} from "@/lib/risco";
+import { type CategoriaNotificacao } from "@/services/notificacoes";
+import type { CenarioSimulacao, PrevisaoChuva } from "@/services/previsao";
+import type { ScoreBairro } from "@/services/scores";
 
 export default function Alertas() {
-  const [usuario, setUsuario] = useState<User | null>(null);
-  const [bairro, setBairro] = useState("");
+  const { bairro, carregandoBairro, selecionarBairro } = useBairroUsuario();
   const [modalBairro, setModalBairro] = useState(false);
-  const [carregando, setCarregando] = useState(true);
+  const [simulando, setSimulando] = useState(false);
 
-  const [notificarChuva, setNotificarChuva] = useState(false);
-  const [notificarDesastres, setNotificarDesastres] = useState(false);
-  const [salvandoPreferencia, setSalvandoPreferencia] =
-    useState<CategoriaNotificacao | null>(null);
+  const {
+    preferencias,
+    historico,
+    salvando: salvandoPreferencia,
+    alternarPreferencia,
+    incrementarSimulacao,
+  } = usePreferenciasNotificacao();
 
   const {
     score,
@@ -82,216 +50,82 @@ export default function Alertas() {
     erro: erroScore,
   } = useScoreBairro(bairro);
 
-  useEffect(() => {
-    const cancelar = onAuthStateChanged(auth, async (usuarioAtual) => {
-      if (!usuarioAtual) {
-        setUsuario(null);
-        setCarregando(false);
-        router.replace("/login");
-        return;
-      }
-
-      setUsuario(usuarioAtual);
-
-      try {
-        const perfilRef = doc(db, "users", usuarioAtual.uid);
-        const perfilSnap = await getDoc(perfilRef);
-
-        let bairroSalvo = "";
-
-        if (perfilSnap.exists()) {
-          const dados = perfilSnap.data();
-          const bairroPerfil = dados.bairro;
-
-          if (typeof bairroPerfil === "string") {
-            bairroSalvo = normalizarBairroOficial(bairroPerfil);
-          }
-        }
-
-        setBairro(bairroSalvo);
-
-        const [chuvaSalva, desastresSalvos] = await Promise.all([
-          AsyncStorage.getItem(
-            `@AlertaChuva:${usuarioAtual.uid}:chuva`
-          ),
-          AsyncStorage.getItem(
-            `@AlertaChuva:${usuarioAtual.uid}:desastre`
-          ),
-        ]);
-
-        setNotificarChuva(chuvaSalva === "true");
-        setNotificarDesastres(desastresSalvos === "true");
-      } catch (erro) {
-        console.error("Erro ao carregar alertas:", erro);
-        Alert.alert(
-          "Não foi possível carregar",
-          "Verifique sua conexão e tente novamente."
-        );
-      } finally {
-        setCarregando(false);
-      }
-    });
-
-    return cancelar;
-  }, []);
-
-  async function salvarBairro(novoBairro: string) {
-    if (!usuario) {
-      Alert.alert("Atenção", "Entre na sua conta para salvar seu bairro.");
-      return;
-    }
-
-    const bairroOficial = normalizarBairroOficial(novoBairro);
-
-    if (!bairroOficial) {
-      Alert.alert(
-        "Bairro não reconhecido",
-        "Selecione um dos bairros oficiais do Recife."
-      );
-      return;
-    }
-
-    try {
-      setBairro(bairroOficial);
-      setModalBairro(false);
-
-      const perfilRef = doc(db, "users", usuario.uid);
-      // A regra do Firestore exige `createdAt` na criação do documento.
-      // Como o setDoc usa merge, checamos antes para não sobrescrever a
-      // data de criação original em cada atualização de bairro.
-      const perfilSnap = await getDoc(perfilRef);
-      const agora = new Date().toISOString();
-
-      await setDoc(
-        perfilRef,
-        {
-          uid: usuario.uid,
-          email: usuario.email ?? "",
-          bairro: bairroOficial,
-          updatedAt: agora,
-          ...(perfilSnap.exists() ? {} : { createdAt: agora }),
-        },
-        { merge: true }
-      );
-
-      Alert.alert(
-        "Bairro atualizado",
-        `Os alertas exibidos agora são referentes a ${bairroOficial}.`
-      );
-    } catch (erro) {
-      console.error("Erro ao salvar bairro:", erro);
-
-      Alert.alert(
-        "Erro ao salvar",
-        "Não foi possível atualizar seu bairro no momento."
-      );
-    }
-  }
+  const { previsao, simularCenario } = usePrevisaoChuva();
 
   async function alterarNotificacao(
     categoria: CategoriaNotificacao,
-    ativar: boolean
+    ativar: boolean,
   ) {
-    if (!usuario) {
-      Alert.alert("Atenção", "Entre na sua conta para configurar alertas.");
-      return;
-    }
-
-    setSalvandoPreferencia(categoria);
-
-    const pushDisponivel = Platform.OS !== "web" && !isRunningInExpoGo();
-
-    try {
-      if (ativar && pushDisponivel) {
-        const Notifications = await import("expo-notifications");
-        const permissaoAtual =
-          await Notifications.getPermissionsAsync();
-
-        let status = permissaoAtual.status;
-
-        if (status !== "granted") {
-          const permissaoSolicitada =
-            await Notifications.requestPermissionsAsync();
-
-          status = permissaoSolicitada.status;
-        }
-
-        if (status !== "granted") {
-          Alert.alert(
-            "Permissão necessária",
-            "Para permitir notificações, habilite essa opção nas configurações do seu celular."
-          );
-          return;
-        }
-      }
-
-      const chave = `@AlertaChuva:${usuario.uid}:${categoria}`;
-
-      await AsyncStorage.setItem(chave, String(ativar));
-
-      if (categoria === "chuva") {
-        setNotificarChuva(ativar);
+    const res = await alternarPreferencia(categoria, ativar);
+    if (!res.ok) {
+      if (res.motivo === "permissao_negada") {
+        Alert.alert(
+          "Permissão necessária",
+          "Habilite as notificações nas configurações do aparelho ou navegador para receber avisos.",
+        );
       } else {
-        setNotificarDesastres(ativar);
+        Alert.alert("Não foi possível salvar", "Tente novamente em instantes.");
       }
-
-      Alert.alert(
-        ativar ? "Notificações ativadas" : "Notificações desativadas",
-        ativar && !pushDisponivel
-          ? "Sua preferência foi salva, mas o envio de avisos só funciona em uma versão com development build."
-          : ativar
-            ? "Sua preferência foi salva neste dispositivo."
-            : "Você pode ativar essa opção novamente quando quiser."
-      );
-    } catch (erro) {
-      console.error("Erro ao configurar notificações:", erro);
-
-      Alert.alert(
-        "Não foi possível salvar",
-        "Tente novamente em instantes."
-      );
-    } finally {
-      setSalvandoPreferencia(null);
     }
   }
 
-  if (carregando) {
+  async function acionarCenarioGatilho(cenario: CenarioSimulacao) {
+    setSimulando(true);
+    try {
+      // Se nenhum aviso estiver ligado ao testar, ativa ambos automaticamente
+      if (
+        cenario !== "real" &&
+        !preferencias.chuva &&
+        !preferencias.desastre
+      ) {
+        await alternarPreferencia("chuva", true);
+        await alternarPreferencia("desastre", true);
+      }
+
+      if (cenario !== "real") {
+        incrementarSimulacao();
+      }
+
+      const novaPrevisao = await simularCenario(cenario);
+      if (!novaPrevisao) {
+        Alert.alert(
+          "API local indisponível",
+          "Verifique se o servidor de previsão (porta 8000) está em execução.",
+        );
+      }
+    } finally {
+      setSimulando(false);
+    }
+  }
+
+  if (carregandoBairro && !bairro) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor={CORES.fundo} />
-        <ActivityIndicator size="large" color={CORES.azul} />
-        <Text style={styles.loadingText}>Carregando seus alertas...</Text>
+        <StatusBar barStyle="dark-content" />
+        <ActivityIndicator size="large" color="#2563EB" />
       </SafeAreaView>
     );
   }
 
+  const cenarioAtivo: CenarioSimulacao = previsao?.fonteObservacao.includes(
+    "CHUVA_FORTE",
+  )
+    ? "chuva_forte"
+    : previsao?.fonteObservacao.includes("MONITORAMENTO")
+      ? "monitoramento"
+      : "real";
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <StatusBar barStyle="dark-content" backgroundColor={CORES.fundo} />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Cabeçalho */}
-        <View style={styles.header}>
-          <View style={styles.headerTextos}>
-            <Text style={styles.headerTitulo}>Alertas</Text>
-            <Text style={styles.headerSubtitulo}>
-              Acompanhe os riscos e cuide-se.
-            </Text>
-          </View>
+        <Text style={styles.headerTitulo}>Alertas e Bairro</Text>
 
-          <View style={styles.headerIcone}>
-            <Ionicons
-              name="notifications-outline"
-              size={27}
-              color={CORES.azul}
-            />
-          </View>
-        </View>
-
-        {/* Bairro selecionado */}
+        {/* BAIRRO SELECIONADO */}
         <Pressable
           style={({ pressed }) => [
             styles.bairroCard,
@@ -299,80 +133,40 @@ export default function Alertas() {
           ]}
           onPress={() => setModalBairro(true)}
         >
-          <View style={styles.bairroIcone}>
-            <Ionicons
-              name="location"
-              size={24}
-              color={CORES.azul}
-            />
-          </View>
-
           <View style={styles.bairroInfo}>
-            <Text style={styles.bairroLegenda}>SEU BAIRRO</Text>
+            <Text style={styles.bairroLegenda}>Bairro monitorado</Text>
             <Text style={styles.bairroNome}>
-              {bairro || "Selecione seu bairro"}
+              {bairro || "Selecionar bairro"}
             </Text>
-            <Text style={styles.bairroAcao}>Toque para alterar</Text>
           </View>
 
-          <View style={styles.bairroSeta}>
-            <Ionicons
-              name="chevron-forward"
-              size={21}
-              color={CORES.azul}
-            />
+          <View style={styles.trocarBotao}>
+            <Text style={styles.trocarTexto}>Trocar</Text>
+            <Ionicons name="chevron-forward" size={16} color="#2563EB" />
           </View>
         </Pressable>
 
-        {/* Preferências de notificação */}
+        {/* PREFERÊNCIAS DE NOTIFICAÇÃO */}
         <View style={styles.secao}>
-          <View style={styles.tituloLinha}>
-            <View style={styles.tituloIcone}>
-              <Ionicons
-                name="notifications"
-                size={20}
-                color={CORES.azul}
-              />
-            </View>
-
-            <Text style={styles.secaoTitulo}>Notificações</Text>
-          </View>
+          <Text style={styles.secaoTitulo}>Avisos automáticos</Text>
 
           <View style={styles.notificacoesCard}>
             <View style={styles.notificacaoLinha}>
-              <View style={[styles.notificacaoIcone, styles.iconeChuva]}>
-                <Ionicons
-                  name="rainy-outline"
-                  size={23}
-                  color="#3366FF"
-                />
-              </View>
-
               <View style={styles.notificacaoTexto}>
-                <Text style={styles.notificacaoTitulo}>
-                  Chuvas fortes
-                </Text>
+                <Text style={styles.notificacaoTitulo}>Chuvas fortes</Text>
                 <Text style={styles.notificacaoDescricao}>
-                  Avisos sobre chuva intensa
+                  Dispara quando a previsão de 3h indicar chuva intensa (≥ 10 mm)
                 </Text>
               </View>
 
               {salvandoPreferencia === "chuva" ? (
-                <ActivityIndicator color={CORES.azul} />
+                <ActivityIndicator color="#2563EB" />
               ) : (
                 <Switch
-                  value={notificarChuva}
-                  onValueChange={(valor) =>
-                    alterarNotificacao("chuva", valor)
-                  }
-                  trackColor={{
-                    false: "#D8DEE9",
-                    true: "#AFC2FF",
-                  }}
-                  thumbColor={
-                    notificarChuva ? CORES.azul : "#FFFFFF"
-                  }
-                  accessibilityLabel="Notificações de chuvas fortes"
+                  value={preferencias.chuva}
+                  onValueChange={(v) => alterarNotificacao("chuva", v)}
+                  trackColor={{ false: "#CBD5E1", true: "#93C5FD" }}
+                  thumbColor={preferencias.chuva ? "#2563EB" : "#FFFFFF"}
                 />
               )}
             </View>
@@ -380,278 +174,226 @@ export default function Alertas() {
             <View style={styles.divisor} />
 
             <View style={styles.notificacaoLinha}>
-              <View
-                style={[
-                  styles.notificacaoIcone,
-                  styles.iconeDesastres,
-                ]}
-              >
-                <Ionicons
-                  name="warning-outline"
-                  size={23}
-                  color="#D97706"
-                />
-              </View>
-
               <View style={styles.notificacaoTexto}>
                 <Text style={styles.notificacaoTitulo}>
-                  Riscos de desastres
+                  Risco de alagamento
                 </Text>
                 <Text style={styles.notificacaoDescricao}>
-                  Avisos sobre alagamentos e deslizamentos
+                  Dispara quando a chuva prevista oferecer risco para{" "}
+                  {bairro || "seu bairro"}
                 </Text>
               </View>
 
               {salvandoPreferencia === "desastre" ? (
-                <ActivityIndicator color={CORES.azul} />
+                <ActivityIndicator color="#2563EB" />
               ) : (
                 <Switch
-                  value={notificarDesastres}
-                  onValueChange={(valor) =>
-                    alterarNotificacao("desastre", valor)
-                  }
-                  trackColor={{
-                    false: "#D8DEE9",
-                    true: "#AFC2FF",
-                  }}
-                  thumbColor={
-                    notificarDesastres ? CORES.azul : "#FFFFFF"
-                  }
-                  accessibilityLabel="Notificações de riscos de desastres"
+                  value={preferencias.desastre}
+                  onValueChange={(v) => alterarNotificacao("desastre", v)}
+                  trackColor={{ false: "#CBD5E1", true: "#93C5FD" }}
+                  thumbColor={preferencias.desastre ? "#2563EB" : "#FFFFFF"}
                 />
               )}
             </View>
           </View>
         </View>
 
-        {/* Risco do bairro */}
+        {/* SIMULADOR DE GATILHO (TESTE DE DISPARO) */}
         <View style={styles.secao}>
-          <View style={styles.alertasTituloLinha}>
-            <View style={styles.tituloLinha}>
-              <View style={styles.tituloIcone}>
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={21}
-                  color={CORES.azul}
-                />
-              </View>
-
-              <Text style={styles.secaoTitulo}>
-                Risco do seu bairro
-              </Text>
-            </View>
-
-            <View style={styles.quantidadeBadge}>
-              <Text style={styles.quantidadeTexto}>
-                {!bairro ? 0 : score ? 1 : 0}
-              </Text>
-            </View>
+          <View style={styles.secaoCabecalhoLinha}>
+            <Text style={styles.secaoTitulo}>Simular gatilho de alerta</Text>
+            {simulando ? (
+              <ActivityIndicator size="small" color="#2563EB" />
+            ) : null}
           </View>
+
+          <View style={styles.simuladorCard}>
+            <Text style={styles.simuladorDescricao}>
+              Teste o detector de chuva forte e o disparo imediato das
+              notificações para {bairro || "o bairro selecionado"}:
+            </Text>
+
+            <View style={styles.botoesCenario}>
+              <Pressable
+                disabled={simulando}
+                onPress={() => acionarCenarioGatilho("real")}
+                style={[
+                  styles.botaoCenario,
+                  cenarioAtivo === "real" && styles.botaoCenarioAtivo,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.botaoCenarioTexto,
+                    cenarioAtivo === "real" && styles.botaoCenarioTextoAtivo,
+                  ]}
+                >
+                  Tempo real
+                </Text>
+              </Pressable>
+
+              <Pressable
+                disabled={simulando}
+                onPress={() => acionarCenarioGatilho("monitoramento")}
+                style={[
+                  styles.botaoCenario,
+                  cenarioAtivo === "monitoramento" &&
+                    styles.botaoCenarioModerado,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.botaoCenarioTexto,
+                    cenarioAtivo === "monitoramento" &&
+                      styles.botaoCenarioTextoModerado,
+                  ]}
+                >
+                  Chuva moderada
+                </Text>
+              </Pressable>
+
+              <Pressable
+                disabled={simulando}
+                onPress={() => acionarCenarioGatilho("chuva_forte")}
+                style={[
+                  styles.botaoCenario,
+                  cenarioAtivo === "chuva_forte" && styles.botaoCenarioCritico,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.botaoCenarioTexto,
+                    cenarioAtivo === "chuva_forte" &&
+                      styles.botaoCenarioTextoCritico,
+                  ]}
+                >
+                  Chuva forte
+                </Text>
+              </Pressable>
+            </View>
+
+            {historico.length > 0 ? (
+              <View style={styles.ultimoDisparoBox}>
+                <View style={styles.ultimoDisparoTopo}>
+                  <Ionicons
+                    name="notifications"
+                    size={15}
+                    color="#1D4ED8"
+                  />
+                  <Text style={styles.ultimoDisparoRotulo}>
+                    Último aviso enviado ({historico.length})
+                  </Text>
+                </View>
+                <Text style={styles.ultimoDisparoTitulo}>
+                  {historico[0].titulo}
+                </Text>
+                <Text style={styles.ultimoDisparoCorpo}>
+                  {historico[0].corpo}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {/* DADOS E HISTÓRICO DO BAIRRO */}
+        <View style={styles.secao}>
+          <Text style={styles.secaoTitulo}>Situação da região</Text>
 
           {!bairro ? (
             <View style={styles.estadoVazio}>
-              <View style={styles.vazioIcone}>
-                <Ionicons
-                  name="location-outline"
-                  size={32}
-                  color={CORES.azul}
-                />
-              </View>
-
-              <Text style={styles.vazioTitulo}>
-                Escolha seu bairro
-              </Text>
-
+              <Text style={styles.vazioTitulo}>Nenhum bairro escolhido</Text>
               <Text style={styles.vazioDescricao}>
-                Selecione seu bairro para visualizar o risco de
-                alagamento.
+                Escolha seu bairro para consultar o histórico de ocorrências e a
+                elevação local.
               </Text>
-
               <Pressable
                 style={styles.botaoSelecionar}
                 onPress={() => setModalBairro(true)}
               >
                 <Text style={styles.botaoSelecionarTexto}>
-                  Selecionar bairro
+                  Escolher bairro
                 </Text>
               </Pressable>
             </View>
-          ) : carregandoScore ? (
+          ) : carregandoScore && !score ? (
             <View style={styles.estadoVazio}>
-              <ActivityIndicator size="large" color={CORES.azul} />
-              <Text style={styles.vazioDescricao}>
-                Carregando o risco do bairro...
-              </Text>
+              <ActivityIndicator color="#2563EB" />
             </View>
           ) : erroScore ? (
             <View style={styles.estadoVazio}>
-              <View style={styles.vazioIcone}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={32}
-                  color={CORES.azul}
-                />
-              </View>
-
-              <Text style={styles.vazioTitulo}>
-                Não foi possível carregar
-              </Text>
-
+              <Text style={styles.vazioTitulo}>Erro ao carregar dados</Text>
               <Text style={styles.vazioDescricao}>
                 Verifique sua conexão e tente novamente.
               </Text>
             </View>
           ) : score ? (
-            <CartaoRisco score={score} />
-          ) : (
-            <View style={styles.estadoVazio}>
-              <View style={styles.vazioIcone}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={32}
-                  color={CORES.azul}
+            <>
+              {previsao ? (
+                <CartaoPrevisao3h
+                  previsao={previsao}
+                  nivelBairro={score.nivel}
                 />
-              </View>
-
-              <Text style={styles.vazioTitulo}>
-                Sem dados para este bairro
-              </Text>
-
-              <Text style={styles.vazioDescricao}>
-                Ainda não há score publicado para este bairro.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Orientação de segurança */}
-        <View style={styles.segurancaCard}>
-          <View style={styles.segurancaIcone}>
-            <Ionicons
-              name="information-circle-outline"
-              size={25}
-              color="#1D4ED8"
-            />
-          </View>
-
-          <View style={styles.segurancaTexto}>
-            <Text style={styles.segurancaTitulo}>
-              Cuide da sua segurança
-            </Text>
-            <Text style={styles.segurancaDescricao}>
-              Em situações de perigo, evite áreas alagadas e siga as
-              orientações da Defesa Civil.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.rodape}>
-          <Ionicons
-            name="umbrella-outline"
-            size={18}
-            color={CORES.secundario}
-          />
-          <Text style={styles.rodapeTexto}>
-            AlertaChuva · Recife, PE
-          </Text>
+              ) : null}
+              <CartaoRisco score={score} />
+            </>
+          ) : null}
         </View>
       </ScrollView>
 
-      {/* Modal de bairros */}
-      <Modal
-        visible={modalBairro}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setModalBairro(false)}
-      >
-        <View style={styles.modalFundo}>
-          <Pressable
-            style={styles.modalAreaFechar}
-            onPress={() => setModalBairro(false)}
-          />
-
-          <View style={styles.modalContainer}>
-            <View style={styles.modalIndicador} />
-
-            <View style={styles.modalCabecalho}>
-              <View>
-                <Text style={styles.modalTitulo}>
-                  Seu bairro
-                </Text>
-                <Text style={styles.modalSubtitulo}>
-                  Escolha uma região do Recife
-                </Text>
-              </View>
-
-              <Pressable
-                style={styles.modalFechar}
-                onPress={() => setModalBairro(false)}
-                accessibilityLabel="Fechar seleção de bairro"
-              >
-                <Ionicons
-                  name="close"
-                  size={23}
-                  color={CORES.texto}
-                />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listaBairros}
-            >
-              {bairrosRecife.map((item) => {
-                const selecionado = item === bairro;
-
-                return (
-                  <Pressable
-                    key={item}
-                    style={[
-                      styles.itemBairro,
-                      selecionado && styles.itemBairroSelecionado,
-                    ]}
-                    onPress={() => salvarBairro(item)}
-                  >
-                    <View
-                      style={[
-                        styles.itemBairroIcone,
-                        selecionado &&
-                          styles.itemBairroIconeSelecionado,
-                      ]}
-                    >
-                      <Ionicons
-                        name="location-outline"
-                        size={19}
-                        color={
-                          selecionado ? CORES.azul : CORES.secundario
-                        }
-                      />
-                    </View>
-
-                    <Text
-                      style={[
-                        styles.itemBairroTexto,
-                        selecionado && styles.itemBairroTextoSelecionado,
-                      ]}
-                    >
-                      {item}
-                    </Text>
-
-                    {selecionado && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={22}
-                        color={CORES.azul}
-                      />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <SeletorBairroModal
+        visivel={modalBairro}
+        bairroAtual={bairro}
+        aoFechar={() => setModalBairro(false)}
+        aoSelecionar={selecionarBairro}
+      />
     </SafeAreaView>
+  );
+}
+
+function CartaoPrevisao3h({
+  previsao,
+  nivelBairro,
+}: {
+  previsao: PrevisaoChuva;
+  nivelBairro: NivelRisco;
+}) {
+  const decisao = combinarPrevisaoERisco(previsao.nivelChuva, nivelBairro);
+
+  return (
+    <View style={[styles.infoCard, { borderColor: decisao.borda }]}>
+      <View style={styles.cardCabecalho}>
+        <Text style={styles.cardCategoria}>Próximas 3 horas</Text>
+        <Text style={[styles.statusTag, { color: decisao.cor }]}>
+          {decisao.rotulo}
+        </Text>
+      </View>
+
+      <Text style={styles.cardTitulo}>{decisao.titulo}</Text>
+      <Text style={styles.cardDescricao}>{decisao.descricao}</Text>
+
+      <View style={styles.metricasLinha}>
+        <Text style={styles.metricaItem}>
+          Chuva ≥10 mm:{" "}
+          <Text style={styles.metricaForte}>
+            {formatarProbabilidade(previsao.probabilidade3hAcum10mm)}
+          </Text>
+        </Text>
+
+        <Text style={styles.metricaItem}>
+          Últimas 3h:{" "}
+          <Text style={styles.metricaForte}>
+            {previsao.chuva3hMm.toFixed(1).replace(".", ",")} mm
+          </Text>
+        </Text>
+      </View>
+
+      {previsao.geradoEm ? (
+        <Text style={styles.atualizadoTexto}>
+          Leitura de {formatarDataHora(previsao.geradoEm)} (
+          {previsao.fonteObservacao})
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -659,104 +401,45 @@ function CartaoRisco({ score }: { score: ScoreBairro }) {
   const info = RISCO_INFO[score.nivel];
 
   return (
-    <View style={styles.alertaCard}>
-      <View style={styles.alertaTopo}>
-        <View
-          style={[
-            styles.alertaIcone,
-            { backgroundColor: info.fundo },
-          ]}
-        >
-          <Ionicons
-            name={ICONE_POR_NIVEL[score.nivel]}
-            size={26}
-            color={info.cor}
-          />
-        </View>
-
-        <View style={styles.alertaTituloContainer}>
-          <Text style={styles.alertaCategoria}>
-            RISCO HISTÓRICO
-          </Text>
-          <Text style={styles.alertaTitulo}>{info.titulo}</Text>
-        </View>
-
-        <View
-          style={[
-            styles.pontoRisco,
-            { backgroundColor: info.cor },
-          ]}
-        />
-      </View>
-
-      <Text style={styles.alertaDescricao}>{info.descricao}</Text>
-
-      <View style={styles.dadosLinha}>
-        <View style={styles.dadoItem}>
-          <Ionicons
-            name="document-text-outline"
-            size={15}
-            color={CORES.secundario}
-          />
-          <Text style={styles.dadoTexto}>
-            {score.ocorrencias} ocorrência(s)
-          </Text>
-        </View>
-
-        <View style={styles.dadoItem}>
-          <Ionicons
-            name="trending-down-outline"
-            size={15}
-            color={CORES.secundario}
-          />
-          <Text style={styles.dadoTexto}>
-            Elevação{" "}
-            {score.elevacaoM != null
-              ? `${Math.round(score.elevacaoM)} m`
-              : "—"}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.alertaRodape}>
-        <View
-          style={[
-            styles.riscoBadge,
-            { backgroundColor: info.fundo },
-          ]}
-        >
-          <View
-            style={[
-              styles.riscoPonto,
-              { backgroundColor: info.cor },
-            ]}
-          />
-          <Text
-            style={[styles.riscoTexto, { color: info.cor }]}
-          >
-            {info.rotulo}
-          </Text>
-        </View>
-
-        {score.temHistorico && (
-          <View style={styles.horarioContainer}>
-            <Ionicons
-              name="analytics-outline"
-              size={15}
-              color={CORES.secundario}
-            />
-            <Text style={styles.horarioTexto}>
-              Score {formatarScore(score.scoreRisco)}/100
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {score.atualizadoEm && (
-        <Text style={styles.atualizadoTexto}>
-          Dados atualizados em {formatarData(score.atualizadoEm)}
+    <View style={styles.infoCard}>
+      <View style={styles.cardCabecalho}>
+        <Text style={styles.cardCategoria}>Histórico do bairro</Text>
+        <Text style={[styles.statusTag, { color: info.cor }]}>
+          {info.rotulo}
         </Text>
-      )}
+      </View>
+
+      <Text style={styles.cardTitulo}>{info.titulo}</Text>
+      <Text style={styles.cardDescricao}>{info.descricao}</Text>
+
+      <View style={styles.metricasLinha}>
+        <Text style={styles.metricaItem}>
+          Ocorrências:{" "}
+          <Text style={styles.metricaForte}>{score.ocorrencias}</Text>
+        </Text>
+
+        <Text style={styles.metricaItem}>
+          Altitude média:{" "}
+          <Text style={styles.metricaForte}>
+            {score.elevacaoM != null ? `${Math.round(score.elevacaoM)} m` : "—"}
+          </Text>
+        </Text>
+
+        {score.temHistorico ? (
+          <Text style={styles.metricaItem}>
+            Índice:{" "}
+            <Text style={styles.metricaForte}>
+              {formatarScore(score.scoreRisco)}/100
+            </Text>
+          </Text>
+        ) : null}
+      </View>
+
+      {score.atualizadoEm ? (
+        <Text style={styles.atualizadoTexto}>
+          Base atualizada em {formatarData(score.atualizadoEm)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -764,486 +447,284 @@ function CartaoRisco({ score }: { score: ScoreBairro }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: CORES.fundo,
+    backgroundColor: "#F8FAFC",
   },
   loadingContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: CORES.fundo,
-    gap: 14,
-  },
-  loadingText: {
-    fontSize: 15,
-    color: CORES.secundario,
+    backgroundColor: "#F8FAFC",
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 36,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 22,
-  },
-  headerTextos: {
-    flex: 1,
-  },
   headerTitulo: {
-    color: CORES.texto,
-    fontSize: 31,
+    color: "#0F172A",
+    fontSize: 24,
     fontWeight: "800",
-    letterSpacing: -0.7,
-  },
-  headerSubtitulo: {
-    color: CORES.secundario,
-    fontSize: 15,
-    marginTop: 4,
-  },
-  headerIcone: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: "#E8EEFF",
-    alignItems: "center",
-    justifyContent: "center",
+    marginBottom: 16,
   },
   bairroCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: CORES.branco,
-    borderRadius: 22,
-    padding: 17,
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     borderWidth: 1,
-    borderColor: CORES.borda,
-    marginBottom: 27,
-    shadowColor: "#1D3557",
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
+    borderColor: "#E2E8F0",
+    marginBottom: 24,
   },
   pressionado: {
-    opacity: 0.8,
-  },
-  bairroIcone: {
-    width: 52,
-    height: 52,
-    borderRadius: 17,
-    backgroundColor: "#EAF0FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
+    opacity: 0.75,
   },
   bairroInfo: {
     flex: 1,
   },
   bairroLegenda: {
-    color: CORES.secundario,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.1,
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "500",
   },
   bairroNome: {
-    color: CORES.texto,
-    fontSize: 19,
-    fontWeight: "800",
-    marginTop: 4,
+    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 2,
   },
-  bairroAcao: {
-    color: CORES.azul,
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  bairroSeta: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "#F1F5FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-  secao: {
-    marginBottom: 27,
-  },
-  tituloLinha: {
+  trocarBotao: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 4,
+    paddingLeft: 12,
   },
-  tituloIcone: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "#E8EEFF",
+  trocarTexto: {
+    color: "#2563EB",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  secao: {
+    marginBottom: 24,
+  },
+  secaoCabecalhoLinha: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
   },
   secaoTitulo: {
-    color: CORES.texto,
-    fontSize: 19,
-    fontWeight: "800",
-    flexShrink: 1,
+    color: "#334155",
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 10,
   },
   notificacoesCard: {
-    backgroundColor: CORES.branco,
-    borderRadius: 22,
-    paddingHorizontal: 15,
-    paddingVertical: 4,
-    marginTop: 15,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: CORES.borda,
-    shadowColor: "#1D3557",
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    borderColor: "#E2E8F0",
   },
   notificacaoLinha: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
+    justifyContent: "space-between",
+    paddingVertical: 14,
     gap: 12,
-  },
-  notificacaoIcone: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconeChuva: {
-    backgroundColor: "#EAF0FF",
-  },
-  iconeDesastres: {
-    backgroundColor: "#FFF1DE",
   },
   notificacaoTexto: {
     flex: 1,
   },
   notificacaoTitulo: {
-    color: CORES.texto,
+    color: "#0F172A",
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   notificacaoDescricao: {
-    color: CORES.secundario,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 4,
+    color: "#64748B",
+    fontSize: 13,
+    marginTop: 2,
   },
   divisor: {
-    height: 1,
-    backgroundColor: "#EDF0F5",
-    marginLeft: 58,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#E2E8F0",
   },
-  alertasTituloLinha: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 15,
-  },
-  quantidadeBadge: {
-    minWidth: 30,
-    height: 30,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    backgroundColor: "#E8EEFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quantidadeTexto: {
-    color: CORES.azul,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  alertaCard: {
-    backgroundColor: CORES.branco,
-    borderRadius: 22,
-    padding: 17,
-    marginBottom: 13,
+  simuladorCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: CORES.borda,
-    shadowColor: "#1D3557",
-    shadowOpacity: 0.045,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    borderColor: "#E2E8F0",
   },
-  alertaTopo: {
+  simuladorDescricao: {
+    color: "#475569",
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  botoesCenario: {
     flexDirection: "row",
-    alignItems: "center",
+    gap: 8,
   },
-  alertaIcone: {
-    width: 52,
-    height: 52,
-    borderRadius: 17,
+  botaoCenario: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
   },
-  alertaTituloContainer: {
-    flex: 1,
+  botaoCenarioAtivo: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#93C5FD",
   },
-  alertaCategoria: {
-    color: CORES.secundario,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1,
+  botaoCenarioModerado: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FCD34D",
+  },
+  botaoCenarioCritico: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FCA5A5",
+  },
+  botaoCenarioTexto: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  botaoCenarioTextoAtivo: {
+    color: "#1D4ED8",
+    fontWeight: "700",
+  },
+  botaoCenarioTextoModerado: {
+    color: "#B45309",
+    fontWeight: "700",
+  },
+  botaoCenarioTextoCritico: {
+    color: "#DC2626",
+    fontWeight: "700",
+  },
+  ultimoDisparoBox: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  ultimoDisparoTopo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     marginBottom: 4,
   },
-  alertaTitulo: {
-    color: CORES.texto,
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 21,
+  ultimoDisparoRotulo: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1D4ED8",
   },
-  pontoRisco: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    marginLeft: 8,
-    alignSelf: "flex-start",
+  ultimoDisparoTitulo: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  ultimoDisparoCorpo: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#475569",
+    marginTop: 2,
+  },
+  infoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  cardCabecalho: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  cardCategoria: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  statusTag: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  cardTitulo: {
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  cardDescricao: {
+    color: "#475569",
+    fontSize: 14,
+    lineHeight: 20,
     marginTop: 6,
   },
-  alertaDescricao: {
-    color: "#58677D",
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 15,
-  },
-  dadosLinha: {
+  metricasLinha: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 14,
+    gap: 16,
     marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E2E8F0",
   },
-  dadoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
+  metricaItem: {
+    color: "#64748B",
+    fontSize: 13,
   },
-  dadoTexto: {
-    color: CORES.secundario,
-    fontSize: 11,
-    fontWeight: "600",
+  metricaForte: {
+    color: "#0F172A",
+    fontWeight: "700",
   },
   atualizadoTexto: {
     color: "#94A3B8",
-    fontSize: 10,
-    marginTop: 12,
-  },
-  alertaRodape: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#EDF0F5",
-    marginTop: 15,
-    paddingTop: 13,
-  },
-  riscoBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    gap: 6,
-  },
-  riscoPonto: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  riscoTexto: {
     fontSize: 11,
-    fontWeight: "800",
-  },
-  horarioContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    flexShrink: 1,
-  },
-  horarioTexto: {
-    color: CORES.secundario,
-    fontSize: 10,
+    marginTop: 10,
   },
   estadoVazio: {
     alignItems: "center",
-    backgroundColor: CORES.branco,
-    borderRadius: 22,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 24,
     borderWidth: 1,
-    borderColor: CORES.borda,
-  },
-  vazioIcone: {
-    width: 62,
-    height: 62,
-    borderRadius: 21,
-    backgroundColor: "#EAF0FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
+    borderColor: "#E2E8F0",
   },
   vazioTitulo: {
-    color: CORES.texto,
-    fontSize: 18,
-    fontWeight: "800",
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "700",
   },
   vazioDescricao: {
-    color: CORES.secundario,
+    color: "#64748B",
     fontSize: 13,
-    lineHeight: 20,
+    lineHeight: 19,
     textAlign: "center",
-    marginTop: 8,
-    marginBottom: 18,
+    marginTop: 6,
+    marginBottom: 16,
   },
   botaoSelecionar: {
-    backgroundColor: CORES.azul,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 13,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
   botaoSelecionarTexto: {
-    color: CORES.branco,
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: "800",
-  },
-  segurancaCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#EAF2FF",
-    borderRadius: 19,
-    padding: 16,
-    gap: 11,
-    marginTop: 2,
-  },
-  segurancaIcone: {
-    width: 35,
-    height: 35,
-    borderRadius: 11,
-    backgroundColor: "#D8E6FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segurancaTexto: {
-    flex: 1,
-  },
-  segurancaTitulo: {
-    color: "#1E40AF",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  segurancaDescricao: {
-    color: "#365987",
-    fontSize: 12,
-    lineHeight: 19,
-    marginTop: 5,
-  },
-  rodape: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 7,
-    marginTop: 24,
-  },
-  rodapeTexto: {
-    color: CORES.secundario,
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  modalFundo: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(15, 23, 42, 0.42)",
-  },
-  modalAreaFechar: {
-    flex: 1,
-  },
-  modalContainer: {
-    backgroundColor: CORES.branco,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: "78%",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  modalIndicador: {
-    width: 42,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#D8DEE9",
-    alignSelf: "center",
-    marginBottom: 22,
-  },
-  modalCabecalho: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 17,
-  },
-  modalTitulo: {
-    color: CORES.texto,
-    fontSize: 23,
-    fontWeight: "800",
-  },
-  modalSubtitulo: {
-    color: CORES.secundario,
-    fontSize: 13,
-    marginTop: 5,
-  },
-  modalFechar: {
-    width: 39,
-    height: 39,
-    borderRadius: 13,
-    backgroundColor: "#F1F4F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  listaBairros: {
-    paddingBottom: 12,
-  },
-  itemBairro: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 11,
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginBottom: 5,
-    gap: 11,
-  },
-  itemBairroSelecionado: {
-    backgroundColor: "#EDF2FF",
-  },
-  itemBairroIcone: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#F1F4F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  itemBairroIconeSelecionado: {
-    backgroundColor: "#DCE6FF",
-  },
-  itemBairroTexto: {
-    flex: 1,
-    color: CORES.texto,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  itemBairroTextoSelecionado: {
-    color: CORES.azulEscuro,
-    fontWeight: "800",
+    fontWeight: "600",
   },
 });

@@ -1,8 +1,11 @@
-
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
+import { useMonitorGatilhoAlertas } from "@/hooks/useNotificacoesAlerta";
+
 export default function TabLayout() {
+  useMonitorGatilhoAlertas();
+
   return (
     <Tabs
       screenOptions={{
@@ -19,7 +22,7 @@ export default function TabLayout() {
             <Ionicons
               name="home-outline"
               size={size}
-              color={color}
+              color={typeof color === "string" ? color : "#2F6BFF"}
             />
           ),
         }}
@@ -33,7 +36,7 @@ export default function TabLayout() {
             <Ionicons
               name="notifications-outline"
               size={size}
-              color={color}
+              color={typeof color === "string" ? color : "#94A3B8"}
             />
           ),
         }}

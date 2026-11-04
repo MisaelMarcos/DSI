@@ -18,5 +18,19 @@ services:
     stdin_open: true
     tty: true
 
+  ml-api:
+    image: python:3.12-slim
+    container_name: alerta-chuva-ml-api
+    profiles: ["ml"]
+    working_dir: /app/src/backend/ml
+    command:
+      - sh
+      - -c
+      - "pip install --no-cache-dir -r requirements.txt && python -m uvicorn api:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+
 volumes:
   expo_node_modules:

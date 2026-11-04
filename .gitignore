@@ -60,3 +60,9 @@ __pycache__/
 # pipeline caches brutos (regener�veis)
 src/backend/pipeline/data/bruto_*.jsonl
 src/backend/pipeline/data/corpos.jsonl
+
+# ML: artefatos gerados pelo treino/coletor
+src/backend/ml/models/
+src/backend/ml/outputs/
+dados/clima/observacoes_*.csv
+.pytest_cache/

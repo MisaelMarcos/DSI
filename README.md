@@ -62,6 +62,37 @@ py gerar_lista_bairros.py
 Os arquivos brutos (`bruto_*.jsonl` e `corpos.jsonl`) não são versionados.
 Em um clone novo, rode os coletores antes de `extrair_bairros.py`.
 
+### 2.1 Rodar o modelo de chuva (opcional)
+
+O módulo de ML usa a chuva observada do INMET A301 e features atmosféricas
+do Open-Meteo. As bases já estão em `dados/clima/`; os modelos treinados e
+os relatórios gerados não são versionados.
+
+```powershell
+cd src/backend/ml
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python train.py
+```
+
+Depois do treino, para coletar a observação atual e gerar uma previsão:
+
+```powershell
+python collect_inmet.py
+python predict.py
+```
+
+Para subir a API:
+
+```powershell
+python -m uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+Detalhes de alvos, métricas, limiares e contrato da API em
+`src/backend/ml/README.md` e `docs/ml-resultados.md`. O app ainda não consome
+essa API; a integração com o Firestore e o score do bairro é a próxima fase.
+
 ### 3. Sincronizar com o Firestore (opcional)
 
 Pré-requisitos: Node.js 18+ e uma service account do Firebase Admin.
@@ -112,6 +143,10 @@ publicados.
   Expo Go os interruptores salvam apenas a preferência local, e o envio real
   exige uma development build.
 - **Docker**: ambiente padronizado para executar o servidor do Expo.
+- **Python + scikit-learn + FastAPI**: treino dos classificadores de chuva,
+  KMeans, validação temporal e API local (`src/backend/ml/`).
+- **INMET A301 + Open-Meteo**: chuva observada e features atmosféricas
+  históricas/atuais para o modelo de previsão.
 
 ## Estrutura do projeto
 
@@ -151,12 +186,16 @@ publicados.
 │   │   ├── auth.service.ts   # Service legado (telas usam Firebase direto)
 │   │   ├── firebase.config.template.ts # Template de config (vazio)
 │   │   ├── README.md         # Guia para o time de backend
-│   │   └── pipeline/           # Coleta de dados de alagamento (Python)
+│   │   ├── pipeline/         # Coleta de dados de alagamento (Python)
+│   │   └── ml/               # Previsão de chuva (INMET + Open-Meteo)
 │   ├── theme.ts              # Tokens de cor/raio/espaçamento
 │   └── assets/               # img1, img2 e logo.png usadas nas telas
+├── dados/
+│   └── clima/                # CSV do INMET, features Open-Meteo e README
 ├── docs/
 │   ├── design-referencias.md # Guia de design travado com o time
 │   ├── bairros-risco.md     # Relatório de risco por bairro (gerado)
+│   ├── ml-resultados.md     # Métricas do modelo de chuva (gerado)
 │   └── plano-integracao-ml.md # Plano de integração do ML
 ├── scripts/
 │   ├── start-docker.ps1     # Detecta o IP e inicia o Docker (-Fresh, -HostIp)
@@ -514,10 +553,37 @@ O `--apply` grava 94 documentos em `scores` e 94 em `bairros`.
 
 Métrica de alerta prevista: usuário cadastra endereço → bairro pelo centróide
 mais próximo em `bairros_geo.csv` → se o ML prever chuva ≥ limiar e o
-`score_risco` for alto, o app envia alerta de alagamento. **A previsão de
-chuva ainda não está integrada**; hoje o app mostra apenas o risco histórico.
+`score_risco` for alto, o app envia alerta de alagamento. O modelo de chuva
+já está implementado em `src/backend/ml/` (CLI + API), mas **ainda não está
+integrado ao app**; hoje o app mostra apenas o risco histórico.
 
 Setup: `cd src/backend/pipeline && py -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`.
+
+### `src/backend/ml/`: previsão de chuva (Python)
+
+- `config.py`: caminhos, fontes, versão e definição dos 7 alvos.
+- `data.py`: leitura do CSV do INMET (latin1, decimal com vírgula, UTC →
+  America/Recife) e do CSV ao vivo.
+- `features.py`: lags, acumulados, tendências, sazonalidade/ciclo diário,
+  features do Open-Meteo e construção dos alvos de 2h/3h.
+- `modeling.py`: KMeans (k por silhouette), Random Forest, validação
+  temporal com gap de 3h, holdout 2020 e escolha de limiares.
+- `train.py`: treina os alvos, compara com/sem KMeans e salva
+  `models/*.joblib` + `models/metadata.json` (ignorados pelo Git).
+- `predict.py`: CLI que lê as observações recentes e devolve JSON com
+  `monitoramento` (limiar de atenção) e `alerta` (limiar forte).
+- `collect_inmet.py`: coleta INMET A301 e features do Open-Meteo; usa
+  Open-Meteo como fallback se o INMET falhar.
+- `api.py`: FastAPI com `POST /prever`, `POST /prever/todos`, `/health` e
+  `/modelos`.
+- `docs/ml-resultados.md`: métricas do holdout 2020 e leitura dos resultados.
+
+O KMeans melhora os alvos de intensidade e é usado em 5 dos 7 alvos; nos
+acumulados de 10/20 mm ele não melhorou o PR-AUC. O alvo principal é
+`3h_acum_10mm`; `3h_10mm` serve como confirmação de chuva forte. No limiar de
+atenção (recall ≥ 0,80) há mais falsos positivos; no limiar forte (F1 máximo)
+há mais precisão. O app deve tratar `monitoramento` como aviso e `alerta`
+como ação.
 
 ### `src/theme.ts`, logo e `metro.config.js`
 
@@ -567,8 +633,9 @@ espaçamentos e alinhamentos separados da estrutura JSX.
    push depende de uma development build).
 5. A aba **Início** lê `scores/{slug}` e mostra o risco histórico do bairro.
    Sem histórico, exibe "sem histórico" em vez de inventar um nível.
-6. A previsão de chuva (ML) ainda não está integrada; ela será combinada com
-   o risco do bairro em uma fase futura.
+6. A previsão de chuva (ML) está disponível por CLI/API em
+   `src/backend/ml/`, mas ainda não é consumida pelo app; ela será combinada
+   com o risco do bairro em uma fase futura.
 
 ## Limitações atuais
 
@@ -577,8 +644,14 @@ espaçamentos e alinhamentos separados da estrutura JSX.
 - O app usa `users/{uid}` (perfil) e lê `scores/{slug}`/`bairros/{slug}`
   (somente leitura autenticada). A escrita nessas coleções é feita pelo
   `scripts/sync-firebase.mjs` com Admin SDK.
-- A previsão de chuva (modelo de ML) ainda não está integrada; o app exibe o
-  risco histórico do bairro e um aviso de integração em desenvolvimento.
+- A previsão de chuva (modelo de ML) está implementada em `src/backend/ml/`
+  com CLI e API, mas ainda não está integrada ao app; o app exibe o risco
+  histórico do bairro e um aviso de integração em desenvolvimento.
+- O modelo de chuva usa 2019–2020 de uma estação (A301). A precisão no
+  limiar de atenção é baixa; o limiar forte é mais preciso, porém cobre menos
+  eventos. Não há validação operacional com dados posteriores a 2020.
+- Os modelos `.joblib` não são versionados; rode `python train.py` em
+  `src/backend/ml` após clonar.
 - As notificações push ainda não são enviadas: os interruptores guardam apenas
   a preferência local. O `expo-notifications` não carrega no Expo Go (Android,
   SDK 53+), então o teste no celular usa o Expo Go sem o módulo nativo; para

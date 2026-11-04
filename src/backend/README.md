@@ -11,6 +11,8 @@ guarda os contratos originais para evoluções (ex.: persistência no Firestore)
 - `auth.service.ts` — service legado de validação local (não usado pelas telas)
 - `firebase.config.template.ts` — objeto de config vazio (referência)
 - `pipeline/` — coleta de dados de alagamento (Python), ver `pipeline/README.md`
+- `ml/` — previsão de chuva (INMET + Open-Meteo), treino, CLI e API FastAPI;
+  ver `ml/README.md`
 
 ## Schema sugerido (Firestore, coleção `users`)
 
