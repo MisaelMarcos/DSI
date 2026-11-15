@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StatusBar,
@@ -13,6 +12,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  MensagemInline,
+  type Mensagem,
+} from "@/components/mensagem-inline";
 import { SeletorBairroModal } from "@/components/seletor-bairro-modal";
 import { useBairroUsuario } from "@/hooks/useBairroUsuario";
 import { usePreferenciasNotificacao } from "@/hooks/useNotificacoesAlerta";
@@ -36,6 +39,8 @@ export default function Alertas() {
     useBairroUsuario();
   const [modalBairro, setModalBairro] = useState(false);
   const [simulando, setSimulando] = useState(false);
+  // Mensagem exibida no topo da tela (substitui os antigos pop-ups).
+  const [mensagem, setMensagem] = useState<Mensagem | null>(null);
 
   const {
     preferencias,
@@ -58,20 +63,30 @@ export default function Alertas() {
     ativar: boolean,
   ) {
     const res = await alternarPreferencia(categoria, ativar);
-    if (!res.ok) {
-      if (res.motivo === "permissao_negada") {
-        Alert.alert(
-          "Permissão necessária",
+    if (res.ok) {
+      setMensagem(null);
+      return;
+    }
+
+    if (res.motivo === "permissao_negada") {
+      setMensagem({
+        tipo: "aviso",
+        titulo: "Permissão necessária",
+        texto:
           "Habilite as notificações nas configurações do aparelho ou navegador para receber avisos.",
-        );
-      } else {
-        Alert.alert("Não foi possível salvar", "Tente novamente em instantes.");
-      }
+      });
+    } else {
+      setMensagem({
+        tipo: "erro",
+        titulo: "Não foi possível salvar",
+        texto: "Tente novamente em instantes.",
+      });
     }
   }
 
   async function acionarCenarioGatilho(cenario: CenarioSimulacao) {
     setSimulando(true);
+    setMensagem(null);
     try {
       // Se nenhum aviso estiver ligado ao testar, ativa ambos automaticamente
       if (
@@ -89,10 +104,12 @@ export default function Alertas() {
 
       const novaPrevisao = await simularCenario(cenario);
       if (!novaPrevisao) {
-        Alert.alert(
-          "API local indisponível",
-          "Verifique se o servidor de previsão (porta 8000) está em execução.",
-        );
+        setMensagem({
+          tipo: "erro",
+          titulo: "API local indisponível",
+          texto:
+            "Verifique se o servidor de previsão (porta 8000) está em execução.",
+        });
       }
     } finally {
       setSimulando(false);
@@ -125,6 +142,12 @@ export default function Alertas() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.headerTitulo}>Alertas e Bairro</Text>
+
+        {mensagem ? (
+          <View style={styles.mensagem}>
+            <MensagemInline {...mensagem} aoFechar={() => setMensagem(null)} />
+          </View>
+        ) : null}
 
         {/* BAIRRO SELECIONADO */}
         <Pressable
@@ -467,6 +490,9 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     fontSize: 24,
     fontWeight: "800",
+    marginBottom: 16,
+  },
+  mensagem: {
     marginBottom: 16,
   },
   bairroCard: {

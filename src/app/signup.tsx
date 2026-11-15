@@ -1,5 +1,4 @@
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -10,13 +9,15 @@ import {
   View,
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useState } from "react";
 
 import { BotaoLocalizacao } from "@/components/botao-localizacao";
 import { Button } from "@/components/button";
-import { Input } from "@/components/input";
+import { Input, InputSenha } from "@/components/input";
+import { MensagemInline } from "@/components/mensagem-inline";
 import { SeletorBairroModal } from "@/components/seletor-bairro-modal";
 import { useAuthStore } from "@/contexts/authContext";
 
@@ -32,9 +33,6 @@ export default function Signup() {
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [bairro, setBairro] = useState("");
   const [modalBairro, setModalBairro] = useState(false);
-
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [mostrarConfirmacao, setMostrarConfirmacao] = useState(false);
 
   const [hasError, setHasError] = useState(false);
   const [mensagemErro, setMensagemErro] = useState("");
@@ -70,6 +68,7 @@ export default function Signup() {
   }
 
   async function handleSignUp() {
+    if (carregando) return;
     limparErro();
 
     const email = usuario.trim();
@@ -119,8 +118,15 @@ export default function Signup() {
       const bairroOficial = normalizarBairroOficial(bairro) || bairro;
       const agora = new Date().toISOString();
 
-      // A conta já foi criada; se o perfil falhar, o usuário ainda entra e
-      // pode escolher o bairro novamente na aba Alertas.
+      // Guarda o bairro no aparelho antes de gravar na nuvem: se o Firestore
+      // falhar, o app ainda sabe o bairro escolhido (useBairroUsuario lê daqui).
+      await AsyncStorage.setItem(
+        `@AlertaChuva:${credencial.user.uid}:bairro`,
+        bairroOficial
+      ).catch(() => {});
+
+      // A conta já foi criada; se o perfil falhar, o usuário ainda entra e a
+      // Home oferece "Selecionar bairro" caso o bairro não tenha sido salvo.
       try {
         await setDoc(
           doc(db, "users", credencial.user.uid),
@@ -135,10 +141,6 @@ export default function Signup() {
         );
       } catch (erroPerfil) {
         console.error("Erro ao salvar perfil no Firestore:", erroPerfil);
-        Alert.alert(
-          "Conta criada",
-          "Não foi possível salvar seu bairro agora. Selecione o bairro na aba Alertas."
-        );
       }
 
       setHasError(false);
@@ -243,7 +245,7 @@ export default function Signup() {
                   <Ionicons
                     name="location-outline"
                     size={20}
-                    color="#2F6BFF"
+                    color="#2563EB"
                   />
 
                   <Text
@@ -272,34 +274,17 @@ export default function Signup() {
 
               <Text style={styles.label}>Senha</Text>
 
-              <View style={styles.passwordContainer}>
-                <Input
-                  placeholder="Digite uma senha forte"
-                  value={senha}
-                  secureTextEntry={!mostrarSenha}
-                  autoCapitalize="none"
-                  editable={!carregando}
-                  error={hasError}
-                  onChangeText={(text: string) => {
-                    setSenhaLogin(text);
-                    limparErro();
-                  }}
-                />
-
-                <Pressable
-                  style={styles.eyeButton}
-                  disabled={carregando}
-                  onPress={() => setMostrarSenha(!mostrarSenha)}
-                >
-                  <Ionicons
-                    name={
-                      mostrarSenha ? "eye-off-outline" : "eye-outline"
-                    }
-                    size={22}
-                    color="#64748B"
-                  />
-                </Pressable>
-              </View>
+              <InputSenha
+                placeholder="Digite uma senha forte"
+                value={senha}
+                autoComplete="new-password"
+                editable={!carregando}
+                error={hasError}
+                onChangeText={(text: string) => {
+                  setSenhaLogin(text);
+                  limparErro();
+                }}
+              />
 
               {senha.length > 0 && (
                 <View style={styles.passwordRules}>
@@ -336,58 +321,30 @@ export default function Signup() {
 
               <Text style={styles.label}>Confirmar senha</Text>
 
-              <View style={styles.passwordContainer}>
-                <Input
-                  placeholder="Digite a senha novamente"
-                  value={confirmarSenha}
-                  secureTextEntry={!mostrarConfirmacao}
-                  autoCapitalize="none"
-                  editable={!carregando}
-                  error={hasError}
-                  onChangeText={(text: string) => {
-                    setConfirmarSenha(text);
-                    limparErro();
-                  }}
-                />
+              <InputSenha
+                placeholder="Digite a senha novamente"
+                value={confirmarSenha}
+                autoComplete="new-password"
+                returnKeyType="go"
+                editable={!carregando}
+                error={hasError}
+                onSubmitEditing={handleSignUp}
+                onChangeText={(text: string) => {
+                  setConfirmarSenha(text);
+                  limparErro();
+                }}
+              />
 
-                <Pressable
-                  style={styles.eyeButton}
-                  disabled={carregando}
-                  onPress={() =>
-                    setMostrarConfirmacao(!mostrarConfirmacao)
-                  }
-                >
-                  <Ionicons
-                    name={
-                      mostrarConfirmacao
-                        ? "eye-off-outline"
-                        : "eye-outline"
-                    }
-                    size={22}
-                    color="#64748B"
-                  />
-                </Pressable>
-              </View>
-
-              {mensagemErro !== "" && (
-                <Text style={styles.errorText} accessibilityRole="alert">
-                  {mensagemErro}
-                </Text>
-              )}
+              {mensagemErro !== "" ? (
+                <MensagemInline tipo="erro" texto={mensagemErro} />
+              ) : null}
 
               <View style={styles.buttonContainer}>
-                {carregando ? (
-                  <View style={styles.loadingButton}>
-                    <Text style={styles.loadingText}>
-                      Cadastrando...
-                    </Text>
-                  </View>
-                ) : (
-                  <Button
-                    label="Criar minha conta"
-                    onPress={handleSignUp}
-                  />
-                )}
+                <Button
+                  label="Criar minha conta"
+                  loading={carregando}
+                  onPress={handleSignUp}
+                />
               </View>
             </View>
 
@@ -459,7 +416,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: "900",
+    fontWeight: "800",
     color: "#0F172A",
     marginTop: 10,
   },
@@ -482,7 +439,7 @@ const styles = StyleSheet.create({
   bairroButton: {
     height: 52,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: "#E2E8F0",
     borderRadius: 12,
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
@@ -503,16 +460,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#94A3B8",
   },
-  passwordContainer: {
-    position: "relative",
-  },
-  eyeButton: {
-    position: "absolute",
-    right: 14,
-    top: 14,
-  },
   passwordRules: {
     backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     borderRadius: 12,
     padding: 12,
     marginBottom: 6,
@@ -537,26 +488,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#16A34A",
   },
-  errorText: {
-    color: "#DC2626",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
-  },
   buttonContainer: {
     marginTop: 4,
-  },
-  loadingButton: {
-    minHeight: 48,
-    borderRadius: 8,
-    backgroundColor: "#3366FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
   },
   footerText: {
     textAlign: "center",
@@ -564,7 +497,7 @@ const styles = StyleSheet.create({
     color: "#64748B",
   },
   footerLink: {
-    color: "#203BB3",
-    fontWeight: "800",
+    color: "#2563EB",
+    fontWeight: "700",
   },
 });

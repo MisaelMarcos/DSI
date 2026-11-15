@@ -1,18 +1,26 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Easing,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
 import { BotaoLocalizacao } from "@/components/botao-localizacao";
 import { bairrosRecife } from "@/data/bairros";
 import { normalizarTexto } from "@/lib/bairros";
+
+const DURACAO_ENTRADA_MS = 280;
+const DURACAO_SAIDA_MS = 200;
+const USAR_DRIVER_NATIVO = Platform.OS !== "web";
 
 type Props = {
   visivel: boolean;
@@ -28,6 +36,41 @@ export function SeletorBairroModal({
   aoSelecionar,
 }: Props) {
   const [busca, setBusca] = useState("");
+  const { height: alturaTela } = useWindowDimensions();
+
+  const [montado, setMontado] = useState(visivel);
+  const progresso = useRef(new Animated.Value(visivel ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visivel) setMontado(true);
+  }, [visivel]);
+
+  useEffect(() => {
+    if (!montado) return;
+
+    if (visivel) {
+      Animated.timing(progresso, {
+        toValue: 1,
+        duration: DURACAO_ENTRADA_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: USAR_DRIVER_NATIVO,
+      }).start();
+    } else {
+      Animated.timing(progresso, {
+        toValue: 0,
+        duration: DURACAO_SAIDA_MS,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: USAR_DRIVER_NATIVO,
+      }).start(({ finished }) => {
+        if (finished) setMontado(false);
+      });
+    }
+  }, [visivel, montado, progresso]);
+
+  const deslocamentoFolha = progresso.interpolate({
+    inputRange: [0, 1],
+    outputRange: [alturaTela, 0],
+  });
 
   const bairrosFiltrados = useMemo(() => {
     const termo = normalizarTexto(busca);
@@ -50,15 +93,25 @@ export function SeletorBairroModal({
 
   return (
     <Modal
-      visible={visivel}
-      animationType="slide"
+      visible={montado}
+      animationType="none"
       transparent
+      statusBarTranslucent
       onRequestClose={fechar}
     >
       <View style={styles.fundo}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.escurecimento, { opacity: progresso }]}
+        />
         <Pressable style={styles.areaFechar} onPress={fechar} />
 
-        <View style={styles.folha}>
+        <Animated.View
+          style={[
+            styles.folha,
+            { transform: [{ translateY: deslocamentoFolha }] },
+          ]}
+        >
           <View style={styles.alca} />
 
           <View style={styles.cabecalho}>
@@ -136,7 +189,7 @@ export function SeletorBairroModal({
               );
             }}
           />
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -146,6 +199,9 @@ const styles = StyleSheet.create({
   fundo: {
     flex: 1,
     justifyContent: "flex-end",
+  },
+  escurecimento: {
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(15, 23, 42, 0.4)",
   },
   areaFechar: {

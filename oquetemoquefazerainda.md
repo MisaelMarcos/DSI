@@ -27,14 +27,14 @@ Este documento reúne as próximas melhorias planejadas para o **Alerta Chuva Re
 
 ---
 
-## 4. Padronização e Polimento das Telas de Login e Cadastro
+## 4. Padronização e Polimento das Telas de Login e Cadastro — ✅ Implementado
 
-- **Situação atual:**
-  - A tela de cadastro ([`src/app/signup.tsx`](src/app/signup.tsx)) ainda utiliza um `Modal` antigo com `ScrollView` simples (sem barra de busca) para escolher entre os 94 bairros.
-  - A tela de login ([`src/app/login.tsx`](src/app/login.tsx)) exibe um `Alert.alert("Parabéns ...! Login realizado com sucesso!")` desnecessário toda vez que o usuário entra e não possui botão de mostrar/ocultar senha (`ícone de olho`) nem indicador de carregamento (`ActivityIndicator`) no botão de entrar.
-- **O que fazer:**
-  - Substituir o modal antigo de [`signup.tsx`](src/app/signup.tsx) pelo componente [`SeletorBairroModal`](src/components/seletor-bairro-modal.tsx) (com busca instantânea sem acento).
-  - Remover o pop-up `"Parabéns..."` do login, adicionar o botão de visualizar senha e alinhar a tipografia e cores de [`login.tsx`](src/app/login.tsx) e [`signup.tsx`](src/app/signup.tsx) com o padrão visual limpo da `Home` e de `Alertas`.
+> - `signup.tsx` usa o `SeletorBairroModal`; o modal antigo não existe mais.
+> - Mensagens aparecem dentro da tela com `src/components/mensagem-inline.tsx` (`erro`, `aviso`, `info`), em `login.tsx`, `signup.tsx` e `tabs/alertas.tsx`. O pop-up "Parabéns..." foi removido: ao logar, o guard de `_layout.tsx` leva direto para `/tabs/home`.
+> - `InputSenha` (`src/components/input.tsx`) traz o ícone de olho para mostrar/ocultar a senha em login e cadastro.
+> - `Button` ganhou a prop `loading` (`ActivityIndicator` + toque bloqueado); login e cadastro usam o mesmo botão.
+> - Tipografia e cores de login/cadastro seguem Home e Alertas (`#0F172A` títulos, `#64748B` apoio, `#E2E8F0` bordas, `#2563EB` primária, raio 12).
+> - Erros de login são traduzidos por `getFriendlyLoginErrorMessage` em `src/lib/firebase-errors.ts`.
 
 ---
 
