@@ -15,26 +15,15 @@ Este documento reúne as próximas melhorias planejadas para o **Alerta Chuva Re
 
 ---
 
-## 2. Detecção Automática de Bairro por GPS ("Usar minha localização")
+## 2. Detecção Automática de Bairro por GPS ("Usar minha localização") — ✅ Implementado
 
-- **Situação atual:**
-  - O usuário escolhe seu bairro pesquisando pelo nome entre os 94 bairros oficiais no [`SeletorBairroModal`](src/components/seletor-bairro-modal.tsx).
-  - O cálculo de distância geográfica (fórmula de Haversine com os centróides dos 94 bairros) já existe no backend em [`verificar_alerta.py`](src/backend/pipeline/verificar_alerta.py), mas ainda não está no app mobile/web.
-- **O que fazer:**
-  - Portar a lista de coordenadas (`lat`/`lon`) dos 94 bairros para `src/data/` e criar uma função `bairroMaisProximo(lat, lon)` em `src/lib/bairros.ts`.
-  - Adicionar o botão **"Usar minha localização atual"** no topo do [`SeletorBairroModal`](src/components/seletor-bairro-modal.tsx) e na tela de cadastro ([`signup.tsx`](src/app/signup.tsx)).
-  - **Resultado esperado:** Com 1 toque, o app identifica o bairro onde o usuário está e já exibe a chance de chuva e alagamento local.
+> Implementado em `src/data/bairros-coordenadas.ts`, `bairroMaisProximo` em `src/lib/bairros.ts`, `src/hooks/useLocalizacaoBairro.ts` e `src/components/botao-localizacao.tsx` (usado no `SeletorBairroModal` e em `signup.tsx`). Rodar `python src/backend/pipeline/gerar_coordenadas_bairros.py` para regenerar as coordenadas.
 
 ---
 
-## 3. Atalhos de Bairros Favoritos na Home (Ex.: *Casa*, *Trabalho*, *UFRPE*)
+## 3. Atalhos de Bairros Favoritos na Home (Ex.: *Casa*, *Trabalho*, *UFRPE*) — ✅ Implementado
 
-- **Situação atual:**
-  - O perfil guarda apenas 1 bairro ativo por vez (`users/{uid}.bairro`). Para consultar outro bairro por onde o usuário vai passar, é necessário trocar o bairro principal no modal.
-- **O que fazer:**
-  - Permitir salvar até **3 bairros favoritos** no perfil do usuário (`bairrosFavoritos: string[]` no Firestore e `AsyncStorage`).
-  - Exibir *chips* rápidos no topo da [`home.tsx`](src/app/tabs/home.tsx) para alternar entre os bairros favoritos com 1 toque.
-  - Opcionalmente, permitir que o monitor de notificações ([`useNotificacoesAlerta.ts`](src/hooks/useNotificacoesAlerta.ts)) vigie todos os bairros favoritados pelo usuário.
+> Implementado em `src/lib/favoritos.ts` (limite e regras), `useBairroUsuario.ts` (`favoritos` + `alternarBairroFavorito`, persistidos em `users/{uid}.bairrosFavoritos` e `@AlertaChuva:{uid}:favoritos`), `src/components/chips-favoritos.tsx` (chips na Home) e `useMonitorGatilhoAlertas` (vigia os favoritos quando o alerta de alagamento está ligado). Regras publicadas no firestore.
 
 ---
 

@@ -2,7 +2,6 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,10 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useState } from "react";
 
+import { BotaoLocalizacao } from "@/components/botao-localizacao";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
+import { SeletorBairroModal } from "@/components/seletor-bairro-modal";
 import { useAuthStore } from "@/contexts/authContext";
-import { bairrosRecife } from "@/data/bairros";
 
 import { normalizarBairroOficial } from "@/lib/bairros";
 import { auth, db } from "@/lib/firebase";
@@ -262,6 +262,14 @@ export default function Signup() {
                 />
               </Pressable>
 
+              <BotaoLocalizacao
+                desabilitado={carregando}
+                aoDetectar={({ bairro: detectado }) => {
+                  setBairro(detectado);
+                  limparErro();
+                }}
+              />
+
               <Text style={styles.label}>Senha</Text>
 
               <View style={styles.passwordContainer}>
@@ -392,48 +400,15 @@ export default function Signup() {
           </View>
         </ScrollView>
 
-        <Modal
-          visible={modalBairro}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setModalBairro(false)}
-        >
-          <View style={styles.modalBackground}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  Escolha seu bairro
-                </Text>
-
-                <Pressable onPress={() => setModalBairro(false)}>
-                  <Ionicons
-                    name="close"
-                    size={26}
-                    color="#0F172A"
-                  />
-                </Pressable>
-              </View>
-
-              <ScrollView>
-                {bairrosRecife.map((item) => (
-                  <Pressable
-                    key={item}
-                    style={styles.bairroItem}
-                    onPress={() => {
-                      setBairro(item);
-                      setModalBairro(false);
-                      limparErro();
-                    }}
-                  >
-                    <Text style={styles.bairroItemText}>
-                      {item}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        <SeletorBairroModal
+          visivel={modalBairro}
+          bairroAtual={bairro}
+          aoFechar={() => setModalBairro(false)}
+          aoSelecionar={(escolhido) => {
+            setBairro(escolhido);
+            limparErro();
+          }}
+        />
       </KeyboardAvoidingView>
     </View>
   );
@@ -591,37 +566,5 @@ const styles = StyleSheet.create({
   footerLink: {
     color: "#203BB3",
     fontWeight: "800",
-  },
-  modalBackground: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalContainer: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "80%",
-    padding: 20,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  bairroItem: {
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  bairroItemText: {
-    fontSize: 16,
-    color: "#334155",
   },
 });

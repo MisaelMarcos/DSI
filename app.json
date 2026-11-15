@@ -36,6 +36,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O Alerta Chuva usa sua localização para identificar o bairro onde você está e mostrar a previsão de chuva e o risco de alagamento daquele local."
+        }
       ]
     ],
     "experiments": {

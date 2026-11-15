@@ -9,6 +9,12 @@ service cloud.firestore {
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
+    // Bairros favoritos (atalhos): opcional, lista de até 3 textos
+    function favoritosValidos(dados) {
+      return !('bairrosFavoritos' in dados)
+        || (dados.bairrosFavoritos is list
+            && dados.bairrosFavoritos.size() <= 3);
+    }
 
     // Coleção principal do app: perfil do usuário
     // Cada usuário só lê/escreve o próprio documento users/{uid}
@@ -18,6 +24,7 @@ service cloud.firestore {
         && request.resource.data.email is string
         && request.resource.data.bairro is string
         && request.resource.data.createdAt is string
+        && favoritosValidos(request.resource.data)
         // impede gravar senha em texto puro
         && !('password' in request.resource.data)
         && !('senha' in request.resource.data)
@@ -27,6 +34,7 @@ service cloud.firestore {
 
       allow update: if isOwner(userId)
         && request.resource.data.uid == resource.data.uid
+        && favoritosValidos(request.resource.data)
         && !('password' in request.resource.data)
         && !('senha' in request.resource.data);
 

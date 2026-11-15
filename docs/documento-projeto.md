@@ -593,7 +593,7 @@ Base existente: reaproveitar tipos de `src/backend/types.ts` e interface de `src
 Coleções Firestore propostas:
 
 ```
-users/{uid}: { email: string, bairro: string, createdAt: timestamp }
+users/{uid}: { email: string, bairro: string, createdAt: timestamp, bairrosFavoritos?: string[] /* até 3 */ }
 alertas/{id}: { titulo, descricao, nivel, timestamp, bairroId }
 previsoes/{bairroId}: { atual: CondicaoMeteorologica, horaria: PrevisaoHoraria[] } // opcional, cache
 ```

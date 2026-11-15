@@ -32,7 +32,8 @@ import type { CenarioSimulacao, PrevisaoChuva } from "@/services/previsao";
 import type { ScoreBairro } from "@/services/scores";
 
 export default function Alertas() {
-  const { bairro, carregandoBairro, selecionarBairro } = useBairroUsuario();
+  const { bairro, favoritos, carregandoBairro, selecionarBairro } =
+    useBairroUsuario();
   const [modalBairro, setModalBairro] = useState(false);
   const [simulando, setSimulando] = useState(false);
 
@@ -181,6 +182,8 @@ export default function Alertas() {
                 <Text style={styles.notificacaoDescricao}>
                   Dispara quando a chuva prevista oferecer risco para{" "}
                   {bairro || "seu bairro"}
+                  {favoritos.length > 0 &&
+                    ` e seus ${favoritos.length} bairro${favoritos.length > 1 ? "s" : ""} favorito${favoritos.length > 1 ? "s" : ""}`}
                 </Text>
               </View>
 

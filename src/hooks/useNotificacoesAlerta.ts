@@ -1,11 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
 
 import { useSession } from "@/contexts/sessionContext";
 import { useBairroUsuario } from "@/hooks/useBairroUsuario";
 import { usePrevisaoChuva } from "@/hooks/usePrevisaoChuva";
 import { useScoreBairro } from "@/hooks/useScoreBairro";
+import { useScoresBairros } from "@/hooks/useScoresBairros";
 import {
   avaliarGatilhosDeAlerta,
   carregarPreferenciasNotificacao,
@@ -132,33 +133,62 @@ export function usePreferenciasNotificacao() {
 }
 
 /**
- * Monitor automático: observa a previsão de 3h, o bairro escolhido e as
- * preferências de notificação. Sempre que um alerta de chuva forte ou risco de
- * alagamento é detectado (e ainda não foi notificado nesta janela), dispara as
- * notificações locais automaticamente.
+ * Monitor automático: observa a previsão de 3h, o bairro escolhido, os bairros
+ * favoritos e as preferências de notificação. Sempre que um alerta de chuva
+ * forte ou risco de alagamento é detectado (e ainda não foi notificado nesta
+ * janela), dispara as notificações locais automaticamente.
+ *
+ * - Bairro principal: avalia as duas categorias ("chuva" e "desastre").
+ * - Favoritos: avalia só "desastre" (risco de alagamento), que depende do
+ *   bairro. O alerta de chuva forte vale para a cidade toda.
  */
 export function useMonitorGatilhoAlertas() {
   const { user } = useSession();
-  const { bairro } = useBairroUsuario();
+  const { bairro, favoritos } = useBairroUsuario();
   const { score } = useScoreBairro(bairro);
   const { previsao } = usePrevisaoChuva();
   const { preferencias, seqSimulacao, registrarDisparo } =
     usePreferenciasNotificacao();
 
-  const processandoRef = useRef(false);
+  // Só vigia favoritos quando o alerta de alagamento está ligado.
+  const favoritosVigiados = useMemo(
+    () =>
+      preferencias.desastre
+        ? favoritos.filter((nome) => nome !== bairro)
+        : [],
+    [preferencias.desastre, favoritos, bairro],
+  );
+  const scoresFavoritos = useScoresBairros(favoritosVigiados);
+
   const enviadasMemoriaRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user || !previsao) return;
     if (!preferencias.chuva && !preferencias.desastre) return;
 
-    const gatilhos = avaliarGatilhosDeAlerta(previsao, score, preferencias);
-    if (gatilhos.length === 0) return;
+    const alertasDesastre = { chuva: false, desastre: preferencias.desastre };
 
-    const assinaturaBase = gerarAssinaturaGatilho(
-      previsao,
-      score?.bairro || bairro || "Recife",
-    );
+    const itens = [
+      ...avaliarGatilhosDeAlerta(previsao, score, preferencias).map(
+        (gatilho) => ({
+          gatilho,
+          assinatura: gerarAssinaturaGatilho(
+            previsao,
+            score?.bairro || bairro || "Recife",
+          ),
+        }),
+      ),
+      ...scoresFavoritos.flatMap((scoreFavorito) =>
+        avaliarGatilhosDeAlerta(previsao, scoreFavorito, alertasDesastre).map(
+          (gatilho) => ({
+            gatilho,
+            assinatura: gerarAssinaturaGatilho(previsao, scoreFavorito.bairro),
+          }),
+        ),
+      ),
+    ];
+    if (itens.length === 0) return;
+
     const sufixoSim = previsao.fonteObservacao.startsWith("SIMULACAO")
       ? `::s${seqSimulacao}`
       : "";
@@ -166,33 +196,27 @@ export function useMonitorGatilhoAlertas() {
     let cancelado = false;
 
     async function verificarEDisparar() {
-      if (processandoRef.current || !user) return;
-      processandoRef.current = true;
+      if (!user) return;
 
-      try {
-        for (const item of gatilhos) {
-          if (cancelado) break;
+      for (const { gatilho, assinatura } of itens) {
+        if (cancelado) break;
 
-          const chaveDeduplicacao = `@AlertaChuva:${user.uid}:trigger:${item.categoria}:${assinaturaBase}${sufixoSim}`;
-          if (enviadasMemoriaRef.current.has(chaveDeduplicacao)) continue;
+        const chaveDeduplicacao = `@AlertaChuva:${user.uid}:trigger:${gatilho.categoria}:${assinatura}${sufixoSim}`;
+        if (enviadasMemoriaRef.current.has(chaveDeduplicacao)) continue;
 
-          if (!sufixoSim) {
-            const jaEnviado = await AsyncStorage.getItem(chaveDeduplicacao);
-            if (jaEnviado === "1") {
-              enviadasMemoriaRef.current.add(chaveDeduplicacao);
-              continue;
-            }
-            await AsyncStorage.setItem(chaveDeduplicacao, "1");
-          }
+        // Reserva a chave antes de qualquer await: execuções do efeito que se
+        // sobrepõem (ex.: scores dos favoritos chegando em momentos diferentes)
+        // não notificam o mesmo alerta duas vezes.
+        enviadasMemoriaRef.current.add(chaveDeduplicacao);
 
-          enviadasMemoriaRef.current.add(chaveDeduplicacao);
-          const disparada = await dispararNotificacaoDispositivo(item);
-          if (!cancelado) {
-            registrarDisparo(disparada);
-          }
+        if (!sufixoSim) {
+          const jaEnviado = await AsyncStorage.getItem(chaveDeduplicacao);
+          if (jaEnviado === "1") continue;
+          await AsyncStorage.setItem(chaveDeduplicacao, "1");
         }
-      } finally {
-        processandoRef.current = false;
+
+        const disparada = await dispararNotificacaoDispositivo(gatilho);
+        registrarDisparo(disparada);
       }
     }
 
@@ -205,6 +229,7 @@ export function useMonitorGatilhoAlertas() {
     user,
     bairro,
     score,
+    scoresFavoritos,
     previsao,
     preferencias,
     seqSimulacao,

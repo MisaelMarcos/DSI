@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ChipsFavoritos } from "@/components/chips-favoritos";
 import { SeletorBairroModal } from "@/components/seletor-bairro-modal";
 import { useSession } from "@/contexts/sessionContext";
 import { useBairroUsuario } from "@/hooks/useBairroUsuario";
@@ -25,7 +26,13 @@ import {
 
 export default function Home() {
   const { logout } = useSession();
-  const { bairro, carregandoBairro, selecionarBairro } = useBairroUsuario();
+  const {
+    bairro,
+    favoritos,
+    carregandoBairro,
+    selecionarBairro,
+    alternarBairroFavorito,
+  } = useBairroUsuario();
   const [modalBairro, setModalBairro] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
 
@@ -91,6 +98,14 @@ export default function Home() {
             </Text>
           </Pressable>
         </View>
+
+        {/* ATALHOS: BAIRROS FAVORITOS (ATÉ 3) */}
+        <ChipsFavoritos
+          bairroAtual={bairro}
+          favoritos={favoritos}
+          aoSelecionar={selecionarBairro}
+          aoAlternarFavorito={alternarBairroFavorito}
+        />
 
         {/* BLOCO PRINCIPAL: PREVISÃO DE CHUVA NAS PRÓXIMAS 3 HORAS */}
         <View style={styles.chuvaCard}>

@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 
+import { BotaoLocalizacao } from "@/components/botao-localizacao";
 import { bairrosRecife } from "@/data/bairros";
 import { normalizarTexto } from "@/lib/bairros";
 
@@ -70,6 +71,10 @@ export function SeletorBairroModal({
             >
               <Ionicons name="close" size={20} color="#334155" />
             </Pressable>
+          </View>
+
+          <View style={styles.localizacao}>
+            <BotaoLocalizacao aoDetectar={({ bairro }) => escolher(bairro)} />
           </View>
 
           <View style={styles.buscaBox}>
@@ -181,6 +186,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
+  },
+  localizacao: {
+    marginBottom: 12,
   },
   buscaBox: {
     flexDirection: "row",

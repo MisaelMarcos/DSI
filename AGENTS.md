@@ -13,6 +13,7 @@ O projeto é composto por três camadas integradas:
    - **Abas principais (`src/app/tabs/`):**
      - `home.tsx`: Tela enxuta focada exclusivamente na **probabilidade de chuva nas próximas 3 horas** e na **chance agregada de alagamento** no bairro conforme a intensidade prevista da chuva.
      - `alertas.tsx`: Gerenciamento do bairro monitorado, chaves de **notificações automáticas** (chuva forte e risco de alagamento), simulador de gatilho (`trigger`) e histórico detalhado do bairro.
+     - **Localização por GPS:** o botão "Usar minha localização atual" (`src/components/botao-localizacao.tsx`, hook `useLocalizacaoBairro`) usa `expo-location` e `bairroMaisProximo` (`src/lib/bairros.ts`, Haversine sobre os centroides de `src/data/bairros-coordenadas.ts`, espelho de `verificar_alerta.py`). Está no `SeletorBairroModal` e em `signup.tsx`; acima de 8 km do centroide mais próximo o app considera o usuário fora do Recife.
 
 2. **Módulo de Machine Learning — Previsão 3h (`src/backend/ml/`)**
    - **Stack:** Python 3.12+, scikit-learn (Random Forest + KMeans), pandas, FastAPI + Uvicorn.
@@ -153,6 +154,7 @@ No React Native `0.88` + React `19.3` (SDK 58), **qualquer string vazia `""` ou 
 ### 4.2. Sincronização Instantânea entre Abas (Zustand + Firestore)
 - O bairro do usuário **nunca** deve ser gerenciado por `useState` isolado em cada tela.
 - Sempre utilize o hook compartilhado [`useBairroUsuario`](src/hooks/useBairroUsuario.ts), que usa Zustand (`useBairroStore`) + `AsyncStorage` + `onSnapshot` no Firestore (`users/{uid}`). Quando o usuário troca de bairro na `Home` ou em `Alertas`, ambas as abas atualizam instantaneamente.
+- **Bairros favoritos:** até 3 atalhos (`LIMITE_FAVORITOS` em `src/lib/favoritos.ts`) em `users/{uid}.bairrosFavoritos: string[]` + `@AlertaChuva:{uid}:favoritos`, expostos por `useBairroUsuario` (`favoritos`, `alternarBairroFavorito`) e exibidos como chips na `home.tsx`. O monitor de notificações vigia os favoritos apenas na categoria "desastre" (alagamento); "chuva forte" é um alerta único da cidade.
 - Da mesma forma, a previsão de 3h é compartilhada via [`usePrevisaoChuva`](src/hooks/usePrevisaoChuva.ts) (`usePrevisaoStore`).
 
 ### 4.3. Sistema de Notificações e Gatilhos (`Triggers`)
